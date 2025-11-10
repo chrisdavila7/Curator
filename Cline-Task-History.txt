@@ -1,0 +1,548 @@
+TASK HISTORY LOGGING RULE (for Cline)
+- Purpose: Standardize how to append new task histories to this file for clear handoff and continuity.
+- Where to write: Always APPEND new task sections to the END of this file. Do not edit prior sections unless explicitly updating an in-progress task before its end marker.
+- Section header:
+  - Line 1: Cline Task History — <Task Name>
+  - Line 2: Timestamp (UTC): <ISO-8601 UTC timestamp at time of writing>
+- Required sections (use the same headings):
+  1) Overview
+  2) Key Technologies & Components
+  3) Functional Summary
+  4) Files Created/Modified (with highlights)
+  5) Important User-Facing Behaviors (Verification Checklist)
+  6) Key Bug and Resolution (if applicable)
+  7) API & Auth
+  8) Testing & Manual QA Steps
+  9) Potential Future Enhancements
+  10) Changelog (Condensed)
+- End-of-task delimiter (MANDATORY):
+  - A line with exactly: End of Task History
+  - Followed by: Task End Marker: ======== END TASK | <same ISO-8601 timestamp> ========
+  - Then a full-width separator line: ================================================================================
+- Formatting:
+  - Use consistent Markdown-style headings and bullet lists.
+  - Use present tense for current behavior, past tense for completed changes.
+  - Keep timestamps in UTC ISO-8601.
+  - Leave one blank line before starting the next task section.
+- Updates vs new tasks:
+  - If continuing the same task before it has been formally ended, update the latest section BEFORE its End Marker.
+  - If the previous task has an End Marker, start a NEW task section at the end of the file.
+- Safety:
+  - Never remove or rewrite previous task histories.
+  - If the file is missing, create it and include this RULE block at the top before adding the first task.
+
+================================================================================
+
+Cline Task History — Check In/Out Workflow
+Timestamp (UTC): 2025-08-28T17:25:23Z
+
+Overview
+- Implemented a full Check In/Out staging workflow and UI to match provided mocks precisely.
+- Added conditional UI rendering, immediate (debounced) asset lookup with skeletons, robust button guards, staged data persistence for both modes, duplicate prevention, a Finalize side card with counts, and a bottom Drawer (Shadcn Sheet) containing a Shadcn Table that displays real staged data.
+- Iterated layout and fixed a scroll/overflow issue by switching to a Shadcn ScrollArea with a correctly constrained height.
+
+Key Technologies & Components
+- Next.js 15 App Router; React 19
+- Shadcn UI: Card, Button, Input, Label, Table, Skeleton, Switch, Sheet (Drawer), ScrollArea
+- TailwindCSS utility classes for layout/spacing/colors
+- Icons (lucide-react): Boxes, ArrowLeftFromLine, ArrowRightFromLine
+- MSAL (msal-react) for API auth/scopes
+- Serverless API routes under /app/api/inventory/*
+- Accessibility: aria attributes, role="alert" messages, keyboard-friendly behaviors
+
+Functional Summary
+- Route: /check-in-out
+- Stage card (left):
+  - Title “Stage”, subtitle “Enter Assets to Check In/Out”
+  - Asset number input triggers immediate debounced lookup (300ms). Lookup uses AbortController to cancel stale requests and handles errors (404 and general).
+  - Skeleton table is shown before item loads; the real AssetDetailsTable renders once item is available.
+  - “To User/Location” control appears only in Check Out mode. When Switch is toggled left (Check In), UI shows an h3 “To Inventory” instead.
+  - Stage button behavior:
+    - Disabled without a valid asset item.
+    - In Check Out, also disabled until a non-empty user/location is provided.
+    - On click:
+      - Check In: save { asset, serial, model } into stagedIn; increment top (in) count; clear asset input.
+      - Check Out: save { asset, serial, model, from: item.userLocation, to: userLocation } into stagedOut; increment bottom (out) count; clear asset input and the user/location input.
+    - Duplicate prevention across both modes: if the asset is already in stagedIn or stagedOut, show error “Asset {id} is already staged for Check In/Check Out.” via role="alert"; do not increment counts or add duplicates.
+- Finalize card (right):
+  - Two rows with Boxes icon, direction arrows (left for In, right for Out), and counts.
+  - Counts are black at zero; blue (in) or green (out) above zero.
+  - Finalize button is disabled when both counts are zero; otherwise opens the Drawer.
+- Finalize Drawer (bottom sheet):
+  - Shadcn Sheet with side="bottom".
+  - Centered rounded panel with handle bar and shadow, aligned with mock styling.
+  - Contains a Shadcn Table that shows all staged items:
+    - Check In row: left cell shows the asset number; right cell shows “Inventory”.
+    - Check Out row: left shows “{asset} — {from}”; right shows the “{to}” destination (no sub-header).
+    - Blue vertical accent bar for Check In rows, green for Check Out rows; directional arrow icons in center.
+  - Height & Scroll behavior:
+    - Height capped at 75% of viewport (75vh). Panel “hugs” content up to that cap.
+    - A Shadcn ScrollArea wraps the table, providing a styled scrollbar and preventing rows from overlapping the Submit/Cancel buttons.
+    - Critical structure for correct scroll:
+      - Panel: h-[75vh] min-h-0 overflow-hidden flex flex-col
+      - Scroll region wrapper: div.flex-1.min-h-0
+      - ScrollArea: className="h-full pr-2" (ensures the ScrollArea viewport has a real height)
+  - Buttons under the scroll region:
+    - Submit (no-op placeholder; logs to console)
+    - Cancel (closes the Drawer)
+
+Files Created/Modified
+
+1) my-app/src/app/check-in-out/page.tsx
+- State and logic:
+  - isCheckout: boolean (true = Check Out/right; false = Check In/left)
+  - assetInput (string), assetError (string|null), loading, item (InventoryItem|null)
+  - userLocation (string) for Check Out destination
+  - inCount/outCount (numbers)
+  - stagedIn: Array<Pick<InventoryItem,"asset"|"serial"|"model">>
+  - stagedOut: Array<Pick<InventoryItem,"asset"|"serial"|"model"> & { from: string; to: string }>
+  - stageError: string|null
+  - finalizeOpen: boolean (controls Drawer)
+- API headers via MSAL with silent token and timeout.
+- Debounced asset lookup with AbortController, showing Skeletons until loaded; renders AssetDetailsTable on success.
+- Conditional “To Inventory” vs “To User/Location” with a Switch; updated placeholder to “Select or Enter User/Location” and hid manual “plus/add” button via prop.
+- Stage button disabled states:
+  - Disabled when no item; additionally disabled in Check Out without a destination.
+- Stage onClick:
+  - Duplicate check across stagedIn/stagedOut; set stageError and abort on duplicate.
+  - Check In: push { asset, serial, model }, increment inCount, clear input/item/error.
+  - Check Out: push { asset, serial, model, from: item.userLocation, to: userLocation }, increment outCount, clear asset and userLocation inputs, clear item/error.
+- Integrated FinalizeCard and FinalizeDrawer:
+  - <FinalizeCard inCount={inCount} outCount={outCount} onFinalize={() => setFinalizeOpen(true)} />
+  - <FinalizeDrawer open={finalizeOpen} onOpenChange={setFinalizeOpen} stagedIn={stagedIn} stagedOut={stagedOut} />
+
+2) my-app/src/components/checkinout/finalize-card.tsx
+- Added onFinalize?: () => void prop.
+- Counts black at zero, colored when > 0.
+- Finalize disabled when both counts are zero; otherwise triggers onFinalize.
+
+3) my-app/src/components/checkinout/finalize-drawer.tsx
+- New Drawer component using Shadcn Sheet (side="bottom").
+- Displays real staged rows in a Shadcn Table:
+  - Check In: left “{asset}”; right “Inventory”
+  - Check Out: left “{asset} — {from}”; right “{to}”
+- Accent bars and lucide arrows as per mocks.
+- Height/scroll fixes:
+  - Panel container: className="... h-[75vh] min-h-0 overflow-hidden flex flex-col ..."
+  - Scroll wrapper: <div className="flex-1 min-h-0">
+  - Shadcn ScrollArea: <ScrollArea className="h-full pr-2"> (ensures visible scrollbar and prevents clipping under buttons)
+- Buttons: Submit (no-op), Cancel (closes)
+
+4) my-app/src/components/user-location-select.tsx
+- Added prop: showManualButton?: boolean (default true).
+- Wrapped the “plus/add” manual entry button in a conditional to support hiding it on the Check In/Out page.
+- Used to remove the plus/add button as requested.
+- Placeholder updated downstream to “Select or Enter User/Location”.
+
+5) my-app/src/components/ui/sheet.tsx (read/used)
+- Provided existing Shadcn Sheet primitives that we used for the Drawer.
+
+6) my-app/src/components/ui/scroll-area.tsx (read/used)
+- Shadcn ScrollArea used to provide styled scrollbar within constrained height.
+
+7) my-app/src/types/inventory.ts (read)
+- InventoryItem includes:
+  - asset: number
+  - userLocation: string
+  - status: "ready_to_deploy" | "deployed" | "retired"
+  - serial: string
+  - model: string
+  - assetImage, notes, modified, modifiedBy, created, createdBy
+
+Important User-Facing Behaviors (Verification Checklist)
+- Switch left (Check In) shows “To Inventory”; right (Check Out) shows “To User/Location”.
+- Asset lookup is immediate on typing; skeleton shown while loading; errors surfaced (404 or auth).
+- Stage button:
+  - Disabled with no loaded asset; in Check Out also requires a destination input.
+  - Check In: stages to In list, increments top counter, clears asset input.
+  - Check Out: stages to Out list with from/to values, increments bottom counter, clears asset and destination input.
+  - Duplicate attempts show an inline error indicating the mode of the duplicate and do not change counts.
+- Finalize card:
+  - Zero counts: black; positive counts: blue (in), green (out).
+  - Finalize disabled when both counts are zero.
+- Drawer:
+  - Opens from Finalize; shows all staged items with real values.
+  - Panel capped at 75% height, scrollable table via Shadcn ScrollArea (visible scrollbar).
+  - Rows never overlap Submit/Cancel; buttons remain fixed.
+
+Key Bug and Resolution: Drawer Scroll/Clipping
+- Symptom: Rows overlapped the button section; scrollbar not visible.
+- Cause: ScrollArea root lacked a fixed height; viewport auto-sized to content, so overflow was not computed.
+- Fix:
+  - Constrain the panel to a real height and enable middle section to shrink:
+    - Panel: h-[75vh] min-h-0 overflow-hidden flex flex-col
+    - Wrapper: div.flex-1.min-h-0
+    - ScrollArea: className="h-full pr-2"
+  - Outcome: Scrollbar visible; rows don’t clip buttons.
+
+API & Auth
+- GET /api/inventory/[asset] with no-store cache and MSAL bearer token acquired via acquireTokenSilent (with timeout).
+- Error handling provides actionable messages.
+
+Testing & Manual QA Steps
+1) Run dev server and navigate to /check-in-out.
+2) Enter valid asset; verify skeleton, then details table.
+3) Stage in Check In mode; verify top count increments; asset input clears.
+4) Switch to Check Out; set destination; stage; verify bottom count increments; both inputs clear.
+5) Attempt to stage the same asset; verify duplicate error reflects correct mode.
+6) Open Drawer; verify rows reflect stagedIn/out, accent bars, icons, and right labels (Inventory or destination).
+7) Add many rows; confirm ScrollArea appears and buttons remain fixed beneath the scroll region.
+
+Potential Future Enhancements
+- Implement Submit behavior to persist staged transitions (API integration).
+- Add per-row removal/edit actions in Drawer.
+- Keyboard interactions for Drawer (e.g., Enter to submit, Esc to cancel).
+- Unit/integration tests: stubs for fetches, staging logic, duplicates, Drawer rendering and scroll behavior.
+- Virtualization for very large staged sets.
+
+Changelog (Condensed)
+- Built Check In/Out page layout per mock; wired sidebar link.
+- Immediate debounced lookup with skeletons.
+- Conditional “To Inventory” vs “To User/Location” (Switch-driven).
+- Stage button guards and behavior; input clearing on stage.
+- Duplicate staging prevention with explicit errors.
+- Finalize card with counts/colors/disabled logic.
+- Drawer added with Shadcn Sheet; Table rendering real staged data.
+- Height cap moved to 75%; switched from pagination to ScrollArea-based scrolling.
+- Fixed scrollbar/clipping via constrained flex layout + ScrollArea h-full.
+
+End of Task History
+Task End Marker: ======== END TASK | 2025-08-28T17:25:23Z ========
+
+Cline Task History — Login-Gated Landing Page
+Timestamp (UTC): 2025-09-02T03:03:30Z
+
+Overview
+- Replace the root route (/) with a landing page that requires Microsoft sign-in.
+- When authenticated, landing auto-redirects to /assets (primary app view).
+- Keep existing MSAL provider and callback flow intact; implement minimal changes to avoid broad refactors.
+
+Key Technologies & Components
+- Next.js 15 App Router; React 19
+- MSAL: @azure/msal-react, @azure/msal-browser
+- Next.js client navigation: next/navigation (router.replace)
+- Shadcn UI: Card, Button
+- TailwindCSS utility classes
+
+Functional Summary
+- Route: /
+  - Initializes MSAL on mount with a 2s safety fallback to avoid hanging UI.
+  - If an active account exists (instance.getActiveAccount() or first account), immediately router.replace("/assets").
+  - If not authenticated, displays a “Authentication Required” card with a “Sign in” button.
+  - Clicking “Sign in” calls instance.loginRedirect with scopes [API_SCOPE]; shows inline error when scope env is missing.
+- Auth callback: /auth/callback (unchanged)
+  - Completes MSAL redirect, sets active account if needed, then router.replace("/").
+  - Landing receives control, detects the active account, and redirects to /assets.
+- Other routes (e.g., /assets, dashboard widgets, /check-in-out) already implement inline auth gating for API access; left unchanged.
+
+Files Created/Modified (with highlights)
+1) my-app/src/app/page.tsx (modified)
+- Converted to a client component “LandingPage”.
+- Initializes MSAL; includes a 2s safety timer to set ready state even if initialize hangs.
+- Redirects to /assets when msalReady && activeAccount.
+- Renders a Shadcn Card with Sign in action when unauthenticated.
+- Validates NEXT_PUBLIC_AZURE_API_SCOPE/AZURE_API_SCOPE before invoking loginRedirect and shows inline error if missing.
+
+Important User-Facing Behaviors (Verification Checklist)
+- Visiting “/” while not signed in shows a card prompting Sign in.
+- Clicking Sign in performs Microsoft login and returns the user to “/”; landing then redirects to “/assets”.
+- Visiting “/” while already signed in redirects immediately to “/assets” without showing landing content.
+- If API scope env variable is missing, the landing shows an inline error and does not attempt sign-in.
+
+Key Bug and Resolution (if applicable)
+- None observed in this change. A defensive 2s safety timer prevents UI hang if MSAL initialize stalls.
+
+API & Auth
+- MSAL configured globally in ClientProviders with sessionStorage cache and navigateToLoginRequestUrl=false.
+- Redirect URI: /auth/callback.
+- Landing uses loginRedirect with scopes derived from NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.
+- Token acquisition for API calls remains on feature pages (unchanged).
+
+Testing & Manual QA Steps
+1) Ensure env is configured with NEXT_PUBLIC_AZURE_FRONTEND_CLIENT_ID, NEXT_PUBLIC_AZURE_TENANT_ID (or AZURE_TENANT_ID), and NEXT_PUBLIC_AZURE_API_SCOPE (or AZURE_API_SCOPE).
+2) Start the dev server and navigate to “/” while signed out; verify the Authentication Required card appears.
+3) Click Sign in; complete the Microsoft login; confirm you land on “/” momentarily, then are redirected to “/assets”.
+4) While signed in, visit “/”; verify immediate redirect to “/assets”.
+5) Temporarily remove NEXT_PUBLIC_AZURE_API_SCOPE; reload “/”; verify an inline error is displayed and no redirect attempt is made.
+
+Potential Future Enhancements
+- Change /auth/callback to router.replace("/assets") to save one hop post-login.
+- Add a reusable RequireAuth wrapper for pages that need authentication beyond API token access checks.
+- Preserve and restore the originally requested URL (state param) to return users to deep links post-login.
+- Optionally render the landing without the AppShell chrome for a cleaner pre-login experience.
+
+Changelog (Condensed)
+- Replaced home page content with a login-gated landing experience.
+- Added msalReady safety fallback and redirect-to-assets behavior.
+- No changes to MSAL provider or callback; leveraged existing app structure.
+
+End of Task History
+Task End Marker: ======== END TASK | 2025-09-02T03:03:30Z ========
+================================================================================
+
+Cline Task History — Login Landing Page UI and Shell Suppression
+Timestamp (UTC): 2025-09-02T03:15:30Z
+
+Overview
+- Updated the login landing page to match the provided mock using only Shadcn Card, Label, Input, and Button.
+- Suppressed AppShell/Sidebar chrome for unauthenticated routes ("/" and "/auth/*") so no other components render until login completes and redirect occurs.
+
+Key Technologies & Components
+- Next.js 15 App Router; React 19
+- Shadcn UI: Card, Label, Input, Button
+- next/navigation: usePathname (for conditional layout), useRouter
+
+Functional Summary
+- Route: /
+  - Displays a centered Card with:
+    - Title: “Login to your account”
+    - Subtitle: “Enter your email below to login to your account”
+    - Email and Password inputs (presentational only)
+    - Full-width “Login” button (black) that triggers MSAL loginRedirect
+  - If authenticated (msalReady && active account), immediately redirects to /assets.
+- App chrome suppression:
+  - ClientLayoutShell hides AppShell on "/" and any "/auth/*" route so no sidebar or other app components are visible pre-login.
+- Auth callback: /auth/callback
+  - Still completes MSAL redirect and then navigates back to "/"; landing then redirects to "/assets" if authenticated.
+
+Files Created/Modified (with highlights)
+1) my-app/src/app/client-layout-shell.tsx (new)
+- Client component that checks pathname and hides AppShell on "/" and "/auth/*".
+- Renders children directly with simple padding when chrome is hidden.
+
+2) my-app/src/app/layout.tsx (modified)
+- Swapped AppShell usage for ClientLayoutShell inside ClientProviders.
+
+3) my-app/src/app/page.tsx (modified)
+- Rebuilt to match mock:
+  - Centered Card with title, subtitle, Email and Password inputs, and a full-width black Login button.
+  - Uses only Shadcn Card, Label, Input, Button.
+  - Maintains MSAL init and redirect-to-/assets behavior; email/password are not submitted (presentational).
+
+Important User-Facing Behaviors (Verification Checklist)
+- Visiting “/” shows only the login Card; no sidebar or other UI is present.
+- Clicking “Login” initiates Microsoft sign-in; after callback, “/” redirects to “/assets”.
+- When already signed in, visiting “/” redirects immediately to “/assets”.
+- Visiting “/auth/callback” does not show the AppShell/Sidebar.
+
+Key Bug and Resolution (if applicable)
+- None introduced; change prevents pre-login chrome flicker by conditionally hiding AppShell.
+
+API & Auth
+- Unchanged: loginRedirect uses scopes from NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE; MSAL provider remains global.
+
+Testing & Manual QA Steps
+1) Ensure env vars are set (client ID, tenant ID, API scope).
+2) While signed out, load “/”; verify only the Card is visible, matching the mock.
+3) Click “Login”; complete Microsoft auth; confirm flow returns to “/” then redirects to “/assets”.
+4) While signed in, load “/”; verify immediate redirect to “/assets” with no Card flicker.
+5) Visit “/auth/callback”; verify no AppShell renders during callback handling.
+6) Remove API scope temporarily; verify inline error on “/” and no login attempt.
+
+Potential Future Enhancements
+- Add organization logo above the title.
+- Add “Forgot password?” or “Use company SSO” helper links (non-functional until after login).
+- Change /auth/callback to redirect directly to /assets to reduce one hop.
+
+Changelog (Condensed)
+- Added ClientLayoutShell to hide AppShell on unauthenticated routes.
+- Updated landing page UI to match the mock using Shadcn Card, Label, Input, Button.
+- Maintained MSAL auth flow and redirect gates.
+
+End of Task History
+Task End Marker: ======== END TASK | 2025-09-02T03:15:30Z ========
+================================================================================
+
+Cline Task History — Dashboard Route Reinstatement
+Timestamp (UTC): 2025-09-02T03:26:30Z
+
+Overview
+- Reinstated the original dashboard (three summary cards + recent activity) under /dashboard.
+- Updated the Sidebar “Home” link to route to /dashboard.
+- Adjusted the login landing redirect to /dashboard so successful sign-in lands on the dashboard.
+
+Key Technologies & Components
+- Next.js 15 App Router; React 19
+- Shadcn UI components already used by the dashboard
+- next/navigation for client routing
+
+Functional Summary
+- Route: /dashboard
+  - Renders the former Home dashboard layout with the header, SearchCommand, and InventoryView (three cards and recent activity).
+- Sidebar:
+  - “Home” now links to /dashboard.
+- Login landing:
+  - After MSAL authentication, landing redirects users to /dashboard.
+
+Files Created/Modified (with highlights)
+1) my-app/src/app/dashboard/page.tsx (new)
+- Mirrors the original root dashboard: header + SearchCommand and <InventoryView />.
+
+2) my-app/src/components/app-sidebar.tsx (modified)
+- Changed Home link from “/” to “/dashboard”.
+
+3) my-app/src/app/page.tsx (modified)
+- Updated post-auth redirect target from “/assets” to “/dashboard”.
+
+Important User-Facing Behaviors (Verification Checklist)
+- Clicking “Home” in the sidebar navigates to /dashboard.
+- After login, users land on /dashboard automatically.
+- The / dashboard shows the three summary cards and recent activity as before.
+
+Key Bug and Resolution (if applicable)
+- None introduced.
+
+API & Auth
+- No changes to API routes or token handling; dashboard continues to gate API calls via existing logic inside InventoryView.
+
+Testing & Manual QA Steps
+1) Sign out and visit “/”; verify login card only (no chrome).
+2) Complete login; confirm redirect to /dashboard and that three cards render.
+3) Click “Home” in the sidebar; confirm routing to /dashboard.
+4) While signed in, visit “/”; confirm immediate redirect to /dashboard.
+5) Smoke test links from dashboard (e.g., asset links) continue to function.
+
+Potential Future Enhancements
+- Add a 301/302 from “/assets” to “/dashboard” if you want a single canonical landing post-login.
+- Add unit test for Sidebar “Home” href change (optional).
+
+Changelog (Condensed)
+- Added /dashboard page with original dashboard layout.
+- Updated Sidebar “Home” to link to /dashboard.
+- Changed login landing redirect to /dashboard.
+
+End of Task History
+Task End Marker: ======== END TASK | 2025-09-02T03:26:30Z ========
+
+Cline Task History — Landing Post-Login Loading State
+Timestamp (UTC): 2025-09-02T03:35:30Z
+
+Overview
+- Added explicit loading UX on the login landing page to provide visual feedback during Microsoft sign-in and the post-auth redirect to the dashboard.
+
+Key Technologies & Components
+- Next.js 15 App Router; React 19
+- Shadcn UI: Card, Label, Input, Button
+- MSAL (msal-react) state-driven UX
+
+Functional Summary
+- Landing page ("/"):
+  - New states:
+    - signingIn: set when the Login button is clicked (before redirecting to Microsoft).
+    - redirecting: set when an active account is detected after MSAL initialization (pre-redirect to /dashboard).
+  - While signingIn or redirecting:
+    - Title/subtitle change to “Signing you in” or “Loading your dashboard”.
+    - Email/Password inputs are hidden to reduce visual noise.
+    - Login button is disabled and shows contextual text (“Opening Microsoft sign-in…” or “Loading...”).
+  - When authenticated, the page redirects to /dashboard.
+- No other components render on "/" due to ClientLayoutShell suppression of AppShell on unauth routes.
+
+Files Created/Modified (with highlights)
+1) my-app/src/app/page.tsx (modified)
+- Added signingIn and redirecting UI states.
+- Updated header copy and button label based on state.
+- Disabled button during transitions and hid inputs to match a clean loading presentation.
+
+Important User-Facing Behaviors (Verification Checklist)
+- Clicking “Login” immediately changes the card to show “Signing you in” and disables the button until the browser navigates to Microsoft.
+- After auth completes and the app briefly returns to “/”, the card shows “Loading your dashboard” until the app navigates to /dashboard.
+- While loading, the form inputs are hidden to avoid confusion.
+- If API scope is missing, an inline error is shown and the loading state is not entered.
+
+Key Bug and Resolution (if applicable)
+- None observed; change adds purely UX feedback layers on top of existing logic.
+
+API & Auth
+- Unchanged: loginRedirect with scopes from NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.
+- Redirect flow remains: /auth/callback -> "/" -> "/dashboard".
+
+Testing & Manual QA Steps
+1) Signed out: visit “/” and click Login; verify “Signing you in” appears and the button is disabled until navigation.
+2) After returning from Microsoft to “/”, verify “Loading your dashboard” appears, then auto-redirect to “/dashboard”.
+3) Signed in: visit “/”; verify immediate “Loading your dashboard” flash or direct redirect (depending on timing).
+4) Remove the API scope env var; click Login; verify an inline error is displayed and the button returns to enabled state.
+
+Potential Future Enhancements
+- Add a subtle spinner icon beside the button label during loading/sign-in.
+- Persist requested path to return users directly to deep-linked routes post-login.
+- Animate the card content transitions for smoother UX.
+
+Changelog (Condensed)
+- Added signingIn/redirecting states and conditional rendering to the landing page.
+- Improved pre-redirect feedback and prevented UI interaction during transitions.
+
+End of Task History
+Task End Marker: ======== END TASK | 2025-09-02T03:35:30Z ========
+
+Cline Task History — SharePoint SSO via MSAL OBO Auto-Login
+Timestamp (UTC): 2025-09-02T03:48:30Z
+
+Overview
+- Ensured a single sign-in experience: the initial landing login now satisfies SharePoint access by auto-provisioning the API token used for On-Behalf-Of (OBO) to Microsoft Graph.
+- Removed secondary manual login prompts in dashboard/assets views by auto-triggering MSAL login when needed, then redirecting to Dashboard.
+
+Key Technologies & Components
+- MSAL (msal-react) SPA login with API scope (frontend)
+- Next.js API routes using MSAL Node Confidential Client OBO to Graph
+- Graph integration for SharePoint via /lib/graph/sharepoint
+- Next.js 15 App Router; React 19
+
+Functional Summary
+- Auth callback now routes directly to /dashboard post-login to avoid flashing the landing page again.
+- Dashboard (InventoryView) and Assets page:
+  - Attempt silent token acquisition for API scope.
+  - If there is no active account or silent acquisition fails (expired/missing token), auto-trigger loginRedirect once (no inline login card).
+  - After successful login, fetch continues with bearer token and API performs OBO to Graph automatically.
+- Result: The same landing credentials log the user in, and SharePoint data loads without an additional login UI.
+
+Files Created/Modified (with highlights)
+1) my-app/src/app/auth/callback/page.tsx (modified)
+- After handleRedirectPromise and active account set, navigate directly to "/dashboard" (router.replace("/dashboard")).
+
+2) my-app/src/components/inventory/inventory-view.tsx (modified)
+- Added triggerLogin() with a one-time guard to initiate MSAL loginRedirect using API_SCOPE when:
+  - No active account after MSAL init, or
+  - acquireTokenSilent fails or times out.
+- Replaced previous needsLogin UI pathways with auto login trigger.
+- Preserves existing loading skeletons and error handling for data fetch.
+
+3) my-app/src/app/assets/page.tsx (modified)
+- Same auto loginRedirect behavior as InventoryView (triggerLogin with one-time guard).
+- Removes dependency on manual “Authentication Required” card for normal flow; keeps error fallback.
+
+Important User-Facing Behaviors (Verification Checklist)
+- Landing login uses Microsoft credentials; after completing auth, user is routed straight to /dashboard.
+- Dashboard loads SharePoint data without a second login screen.
+- If the token is missing/expired, the app auto-initiates MSAL login once, then completes loading without manual prompts.
+- No duplicate landing/login pages are shown post-auth.
+
+Key Bug and Resolution
+- Symptom: After first login, dashboard still requested login for SharePoint/API.
+- Cause: Pages could render without an active account or with silent token failure, surfacing a second manual login prompt.
+- Resolution: Auto-trigger MSAL loginRedirect (once) from dashboard/assets when needed; redirect auth callback straight to /dashboard to prevent landing page re-render.
+
+API & Auth
+- Client: loginRedirect requests API scope (NEXT_PUBLIC_AZURE_API_SCOPE/AZURE_API_SCOPE).
+- Server: Next.js API receives bearer token; MSAL Node Confidential Client performs OBO to Graph using GRAPH_SCOPES (e.g., https://graph.microsoft.com/.default).
+- Admin consent for Graph scopes must be configured on the backend app registration (unchanged).
+
+Testing & Manual QA Steps
+1) Sign out, visit “/”, click Login. Complete Microsoft auth.
+2) Verify redirect: /auth/callback -> /dashboard (no return to landing).
+3) Confirm dashboard loads without additional login prompts and shows data (cards and recent activity).
+4) Clear sessionStorage and revisit /dashboard: app should auto-initiate MSAL login once, then load data.
+5) Temporarily break API scope env var; confirm landing shows inline error and does not loop login.
+
+Potential Future Enhancements
+- Persist original deep link path in state and return users to the exact route post-login.
+- Add a global auth guard HOC to centralize auto-login logic across all protected pages.
+- Instrument telemetry to measure silent-acquire success and login loops.
+
+Changelog (Condensed)
+- Auth callback now redirects to /dashboard directly.
+- Added auto-login behavior (one-time guarded) on dashboard and assets pages when silent token acquisition fails or no account exists.
+- Removed dependence on secondary manual login prompts in normal flow.
+
+End of Task History
+Task End Marker: ======== END TASK | 2025-09-02T03:48:30Z ========
+================================================================================
