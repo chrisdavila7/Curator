@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { STATUS_COLORS } from "@/lib/status-colors";
 
 type Props = {
   isCheckout: boolean;
@@ -23,11 +24,11 @@ export default function CheckInOutTabs({ isCheckout, onChange, className }: Prop
           className={cn(
             "relative rounded-full px-3 py-1.5 text-sm font-medium outline-none",
             "transition-all duration-200 ease-out",
-            "hover:bg-accent/80 hover:shadow-sm hover:ring-1 hover:ring-sky-300/40",
-            "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-sky-400",
+            "hover:bg-accent/80 hover:shadow-sm hover:ring-1 hover:ring-indigo-950/20",
+            "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-100",
             "data-[state=inactive]:text-foreground data-[state=inactive]:opacity-100"
           )}
-          style={!isCheckout ? { backgroundColor: "rgba(0,166,244,0.3)", color: "#00A6F4" } : undefined}
+          style={!isCheckout ? { backgroundColor: STATUS_COLORS.ready.bg, color: STATUS_COLORS.ready.text } : undefined}
         >
           Check In
         </TabsTrigger>
@@ -36,11 +37,11 @@ export default function CheckInOutTabs({ isCheckout, onChange, className }: Prop
           className={cn(
             "relative rounded-full px-3 py-1.5 text-sm font-medium outline-none",
             "transition-all duration-200 ease-out",
-            "hover:bg-accent/80 hover:shadow-sm hover:ring-1 hover:ring-emerald-300/40",
+            "hover:bg-accent/80 hover:shadow-sm hover:ring-1 hover:ring-orange-500/20",
             "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-400",
             "data-[state=inactive]:text-foreground data-[state=inactive]:opacity-100"
           )}
-          style={isCheckout ? { backgroundColor: "rgba(0,188,125,0.3)", color: "#00BC7D" } : undefined}
+          style={isCheckout ? { backgroundColor: STATUS_COLORS.deployed.bg, color: STATUS_COLORS.deployed.text } : undefined}
         >
           Check Out
         </TabsTrigger>

@@ -11,6 +11,12 @@ import {
   type EventMessage,
 } from "@azure/msal-browser";
 
+declare global {
+  interface Window {
+    msalPca?: PublicClientApplication;
+  }
+}
+
 function createMsalInstance() {
   const tenantId =
     process.env.NEXT_PUBLIC_AZURE_TENANT_ID || process.env.AZURE_TENANT_ID || "common";
@@ -41,6 +47,10 @@ function createMsalInstance() {
   };
 
   const pca = new PublicClientApplication(config);
+  if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
+    // Expose MSAL instance for local auth verification in dev tools
+    window.msalPca = pca;
+  }
   return pca;
 }
 

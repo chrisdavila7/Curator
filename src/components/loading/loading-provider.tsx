@@ -35,7 +35,7 @@ type Props = {
 export function GlobalLoadingProvider({
   children,
   showDelayMs = 250,
-  minVisibleMs = 300,
+  minVisibleMs = 0,
 }: Props) {
   const [count, setCount] = React.useState(0);
   const [visible, setVisible] = React.useState(false);
@@ -71,7 +71,15 @@ export function GlobalLoadingProvider({
         }, showDelayMs);
       }
     } else {
-      // schedule hide respecting min visible time
+      // if no minimum visible duration is configured, hide immediately so the
+      // global overlay stops as soon as the last loading operation completes
+      if (minVisibleMs === 0) {
+        setVisible(false);
+        lastShownAtRef.current = null;
+        return;
+      }
+
+      // otherwise, schedule hide respecting the configured minimum visible time
       const elapsed = lastShownAtRef.current
         ? Date.now() - lastShownAtRef.current
         : Infinity;

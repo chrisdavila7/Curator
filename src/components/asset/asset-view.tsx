@@ -36,6 +36,7 @@ import {
   DialogFooter as ModalDialogFooter,
 } from "@/components/ui/dialog";
 import { useLottieOverlay } from "@/components/lottie/overlay-provider";
+import { useGlobalLoading } from "@/components/loading/loading-provider";
 
 const isMock =
   process.env.NEXT_PUBLIC_USE_MOCK_INVENTORY === "true" ||
@@ -69,6 +70,7 @@ type Props = {
 
 export function AssetView({ asset, initialTab, leftCols = 5, rightCols = 7, fillLeft = false, isOverlay = false, onCloseOverlay }: Props) {
   const { instance, accounts } = useMsal();
+  const { withGlobalLoading } = useGlobalLoading();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = React.useState(false);
@@ -148,73 +150,77 @@ export function AssetView({ asset, initialTab, leftCols = 5, rightCols = 7, fill
   }, [asset]);
 
   const load = React.useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      if (assetNum == null) {
-        setItem(null);
-        return;
-      }
-
-      let headers: HeadersInit = {};
-
-      if (!isMock) {
-        if (!API_SCOPE) {
-          throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
-        }
-        if (!activeAccount) {
-          setNeedsLogin(true);
-          return;
-        }
-
-        const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
-          const p = instance.acquireTokenSilent({
-            scopes: [API_SCOPE],
-            account: activeAccount,
-          });
-          const timeout = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
-          );
-          return (await Promise.race([p, timeout])) as AuthenticationResult;
-        };
-
+    await withGlobalLoading(
+      (async () => {
         try {
-          const result = await acquireSilentWithTimeout(10000);
-          headers = { Authorization: `Bearer ${result.accessToken}` };
-        } catch {
-          setNeedsLogin(true);
-          return;
+          setLoading(true);
+          setError(null);
+
+          if (assetNum == null) {
+            setItem(null);
+            return;
+          }
+
+          let headers: HeadersInit = {};
+
+          if (!isMock) {
+            if (!API_SCOPE) {
+              throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
+            }
+            if (!activeAccount) {
+              setNeedsLogin(true);
+              return;
+            }
+
+            const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
+              const p = instance.acquireTokenSilent({
+                scopes: [API_SCOPE],
+                account: activeAccount,
+              });
+              const timeout = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
+              );
+              return (await Promise.race([p, timeout])) as AuthenticationResult;
+            };
+
+            try {
+              const result = await acquireSilentWithTimeout(10000);
+              headers = { Authorization: `Bearer ${result.accessToken}` };
+            } catch {
+              setNeedsLogin(true);
+              return;
+            }
+          } else {
+            // In mock mode, no auth header.
+          }
+
+          const res = await fetch(`/api/inventory/${assetNum}`, { method: "GET", headers, cache: "no-store" });
+          if (res.status === 404) {
+            // Asset not found
+            setItem(null);
+            setSelectedStatus(null);
+            return;
+          }
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`API ${res.status}: ${text}`);
+          }
+          const resETag = hasHeaderGet(res)
+            ? res.headers.get("ETag") || res.headers.get("Etag") || res.headers.get("etag")
+            : null;
+          const found = (await res.json()) as InventoryItem;
+
+          setItem(found);
+          setSelectedStatus(found.status);
+          setEtag(resETag);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Unknown error");
+        } finally {
+          setLoading(false);
         }
-      } else {
-        // In mock mode, no auth header.
-      }
-
-      const res = await fetch(`/api/inventory/${assetNum}`, { method: "GET", headers, cache: "no-store" });
-      if (res.status === 404) {
-        // Asset not found
-        setItem(null);
-        setSelectedStatus(null);
-        return;
-      }
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`API ${res.status}: ${text}`);
-      }
-      const resETag = hasHeaderGet(res)
-        ? res.headers.get("ETag") || res.headers.get("Etag") || res.headers.get("etag")
-        : null;
-      const found = (await res.json()) as InventoryItem;
-
-      setItem(found);
-      setSelectedStatus(found.status);
-      setEtag(resETag);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, [assetNum, activeAccount, instance]);
+      })()
+    );
+  }, [withGlobalLoading, assetNum, activeAccount, instance]);
 
   React.useEffect(() => {
     // Ensure MSAL ready first in live mode, otherwise attempt load immediately
@@ -238,63 +244,67 @@ export function AssetView({ asset, initialTab, leftCols = 5, rightCols = 7, fill
     let cancelled = false;
 
     const fetchHistory = async () => {
-      try {
-        setHistoryLoading(true);
-        setHistoryError(null);
+      await withGlobalLoading(
+        (async () => {
+          try {
+            setHistoryLoading(true);
+            setHistoryError(null);
 
-        let headers: HeadersInit = {};
-        if (!isMock) {
-          if (!API_SCOPE) {
-            throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
+            let headers: HeadersInit = {};
+            if (!isMock) {
+              if (!API_SCOPE) {
+                throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
+              }
+              const acct = activeAccount;
+              if (!acct) {
+                setNeedsLogin(true);
+                return;
+              }
+
+              const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
+                const p = instance.acquireTokenSilent({
+                  scopes: [API_SCOPE],
+                  account: acct,
+                });
+                const timeout = new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
+                );
+                return (await Promise.race([p, timeout])) as AuthenticationResult;
+              };
+
+              const res = await acquireSilentWithTimeout(10000);
+              headers = { Authorization: `Bearer ${res.accessToken}` };
+            }
+
+            const res = await fetch(`/api/inventory/${assetNum}/history`, { headers, cache: "no-store" });
+            if (!res.ok) {
+              if (res.status === 404) {
+                if (!cancelled) setHistoryEvents([]);
+              } else {
+                const t = await res.text();
+                throw new Error(`API ${res.status}: ${t}`);
+              }
+            } else {
+              const data = (await res.json()) as AssetHistoryEvent[];
+              if (!cancelled) setHistoryEvents(Array.isArray(data) ? data : []);
+            }
+          } catch (e) {
+            if (!cancelled) {
+              setHistoryError(e instanceof Error ? e.message : "Unknown error");
+              setHistoryEvents([]);
+            }
+          } finally {
+            if (!cancelled) setHistoryLoading(false);
           }
-          const acct = activeAccount;
-          if (!acct) {
-            setNeedsLogin(true);
-            return;
-          }
-
-          const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
-            const p = instance.acquireTokenSilent({
-              scopes: [API_SCOPE],
-              account: acct,
-            });
-            const timeout = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
-            );
-            return (await Promise.race([p, timeout])) as AuthenticationResult;
-          };
-
-          const res = await acquireSilentWithTimeout(10000);
-          headers = { Authorization: `Bearer ${res.accessToken}` };
-        }
-
-        const res = await fetch(`/api/inventory/${assetNum}/history`, { headers, cache: "no-store" });
-        if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) setHistoryEvents([]);
-          } else {
-            const t = await res.text();
-            throw new Error(`API ${res.status}: ${t}`);
-          }
-        } else {
-          const data = (await res.json()) as AssetHistoryEvent[];
-          if (!cancelled) setHistoryEvents(Array.isArray(data) ? data : []);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setHistoryError(e instanceof Error ? e.message : "Unknown error");
-          setHistoryEvents([]);
-        }
-      } finally {
-        if (!cancelled) setHistoryLoading(false);
-      }
+        })()
+      );
     };
 
     void fetchHistory();
     return () => {
       cancelled = true;
     };
-  }, [activeTab, assetNum, isMock, API_SCOPE, activeAccount, instance, historyEvents, historyLoading]);
+  }, [activeTab, assetNum, isMock, API_SCOPE, activeAccount, instance, historyEvents, historyLoading, withGlobalLoading]);
 
 
   const handleSignIn = async () => {
@@ -646,6 +656,7 @@ export function AssetView({ asset, initialTab, leftCols = 5, rightCols = 7, fill
                       size="sm"
                       disabled={!hasAnyChanges || saveLoading}
                       aria-disabled={!hasAnyChanges || saveLoading}
+                      className="rounded-lg"
                     >
                       {saveLoading ? "Saving..." : "Save"}
                     </Button>

@@ -1,9 +1,35 @@
-import { InlineLoader } from "@/components/ui/inline-loader";
+"use client";
+
+import * as React from "react";
+import { useLottieOverlay } from "@/components/lottie/overlay-provider";
+import { LOADING_ANIMATION_PATH } from "@/components/loading/loading-constants";
 
 export default function Loading() {
-  return (
-    <div className="flex min-h-48 items-center justify-center py-8" aria-live="polite">
-      <InlineLoader label="Loading asset…" size="md" />
-    </div>
-  );
+  const { open, close } = useLottieOverlay();
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const ok = await open({
+        url: LOADING_ANIMATION_PATH,
+        loop: true,
+        autoplay: true,
+        speed: 1.2,
+      });
+
+      if (!ok && !cancelled) {
+        // If the loading animation fails, we simply allow the underlying UI
+        // to remain visible without a blocking overlay.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      close();
+    };
+  }, [open, close]);
+
+  // The overlay itself is rendered globally by <LottieOverlay /> in the layout.
+  return null;
 }

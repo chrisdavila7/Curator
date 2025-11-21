@@ -20,6 +20,8 @@ import { useLottieOverlay } from "@/components/lottie/overlay-provider";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useGlobalLoading } from "@/components/loading/loading-provider";
 import PageHeader from "@/components/page-header";
+import { orchestrateHandReceipts } from "@/lib/pdf/orchestrate-hand-receipts";
+import { PdfPreviewDialog } from "@/components/templates/pdf-preview-dialog";
 
 const isMock =
   process.env.NEXT_PUBLIC_USE_MOCK_INVENTORY === "true" ||
@@ -99,6 +101,12 @@ export default function CheckInOutPage() {
   const [stageError, setStageError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+  const [previewBytes, setPreviewBytes] = React.useState<Uint8Array | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [previewQueue, setPreviewQueue] = React.useState<Uint8Array[]>([]);
+  const [queueIndex, setQueueIndex] = React.useState(0);
+  const [autoSubmitAfterPreview, setAutoSubmitAfterPreview] = React.useState(false);
 
   // Overlay variant URLs (env overrides)
   const CHECKIN_OVERLAY_URL =
@@ -177,14 +185,12 @@ export default function CheckInOutPage() {
         const headers = await getAuthHeaders().catch((e) => {
           throw new Error(e instanceof Error ? e.message : "Auth error");
         });
-        const res = await withGlobalLoading(
-          fetch(`/api/inventory/${assetNum}`, {
-            method: "GET",
-            headers,
-            cache: "no-store",
-            signal: controller.signal,
-          })
-        );
+        const res = await fetch(`/api/inventory/${assetNum}`, {
+          method: "GET",
+          headers,
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!res.ok) {
           if (!cancelled) {
             setAssetError(res.status === 404 ? "Asset not found in SharePoint list" : `Lookup failed (${res.status})`);
@@ -340,6 +346,106 @@ export default function CheckInOutPage() {
     }
   }, [stagedIn, stagedOut, getAuthHeaders, toast, open, resolveFinalizeOverlayUrl]);
 
+  // Generate Blank Hand Receipt and show preview (multi-PDF sequencing by User/Location)
+  // Sequencing handler for PdfPreviewDialog close -> advance to next queued PDF
+  const handlePreviewOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (!open) {
+        if (previewQueue.length > 0 && queueIndex + 1 < previewQueue.length) {
+          const next = queueIndex + 1;
+          setQueueIndex(next);
+          setPreviewBytes(previewQueue[next]);
+          setPreviewOpen(true);
+        } else {
+          setPreviewQueue([]);
+          setQueueIndex(0);
+          setPreviewBytes(null);
+          setPreviewOpen(false);
+          if (autoSubmitAfterPreview) {
+            setAutoSubmitAfterPreview(false);
+            void (async () => {
+              await handleSubmitFinalize();
+            })();
+          }
+        }
+      } else {
+        setPreviewOpen(true);
+      }
+    },
+    [previewQueue, queueIndex, autoSubmitAfterPreview, handleSubmitFinalize]
+  );
+
+  // Pagination handlers for multi-PDF preview (when dialog is open)
+  const handlePrev = React.useCallback(() => {
+    if (queueIndex > 0) {
+      const next = queueIndex - 1;
+      setQueueIndex(next);
+      setPreviewBytes(previewQueue[next]);
+    }
+  }, [queueIndex, previewQueue]);
+
+  const handleNext = React.useCallback(() => {
+    if (queueIndex + 1 < previewQueue.length) {
+      const next = queueIndex + 1;
+      setQueueIndex(next);
+      setPreviewBytes(previewQueue[next]);
+    }
+  }, [queueIndex, previewQueue]);
+
+  // Generate Blank Hand Receipt and show preview (grouped by User/Location; up to 5 assets per PDF)
+  const handleGenerateDocument = React.useCallback(async () => {
+    if (stagedOut.length === 0) {
+      toast({
+        title: "No item staged",
+        description: "Stage a Check Out item first to generate a receipt.",
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Derive current user's display name from MSAL
+    const acct = activeAccount || instance.getActiveAccount() || null;
+    const ctsRepName =
+      (acct && (acct.name || (acct.idTokenClaims as Record<string, unknown> | undefined)?.name as string | undefined)) ||
+      (acct && ((acct.idTokenClaims as Record<string, unknown> | undefined)?.preferred_username as string | undefined)) ||
+      "User";
+
+    try {
+      setPreviewBytes(null);
+      setPreviewLoading(true);
+      setPreviewOpen(true);
+      setAutoSubmitAfterPreview(true);
+
+      const results = await orchestrateHandReceipts({
+        getAuthHeaders,
+        stagedOut,
+        ctsRepName,
+        // date defaults inside generator if omitted
+        templateKey: "Blank Hand Receipt",
+      });
+
+      if (results.length > 0) {
+        const queue = results.map((r) => r.bytes);
+        setPreviewQueue(queue);
+        setQueueIndex(0);
+        setPreviewBytes(queue[0]);
+      } else {
+        // No results; close preview and show toast
+        setPreviewOpen(false);
+        toast({
+          title: "No receipts generated",
+          description: "No eligible items to generate receipts.",
+          duration: 3000,
+        });
+      }
+
+      setPreviewLoading(false);
+    } catch (e) {
+      setPreviewLoading(false);
+      setSubmitError(e instanceof Error ? e.message : "Failed to generate receipt(s)");
+    }
+  }, [stagedOut, getAuthHeaders, toast, activeAccount, instance]);
+
   function AssetDetailsSkeleton() {
     return (
       <div className="rounded-md border w-full">
@@ -389,7 +495,7 @@ export default function CheckInOutPage() {
       {/* Content: Stage card (left) + Finalize panel (right) */}
       <div className="mx-auto max-w-[1600px] grid gap-8 md:grid-cols-[600px_600px] justify-items-center items-start flex-1 min-h-0">
         <div ref={stageRef} className="w-full md:w-[600px] min-h-0">
-        <Card className="py-0 self-start w-full md:w-[600px]">
+        <Card className="py-0 self-start w-full md:w-[600px] border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardContent className="px-12 pt-5 pb-4 flex flex-col overflow-x-hidden overflow-y-visible min-w-0">
           {/* Header of card: Title + subtitle left, switch right */}
           <div className="flex items-center justify-between gap-4">
@@ -433,7 +539,7 @@ export default function CheckInOutPage() {
             />
           </div>
 
-          {/* Details table (or skeleton when empty) */}
+          {/* Details table (or skeleton when empty); while loading we only show the skeleton */}
           <div className="mt-4">
             {item ? (
               <AssetDetailsTable item={item} />
@@ -571,14 +677,13 @@ export default function CheckInOutPage() {
                 {stageError}
               </div>
             )}
-          </div>
-
+          </div>  
         </CardContent>
       </Card>
         </div>
         <div className="w-full md:w-[600px]">
           <FinalizePanelCard
-            className="w-full md:w-[600px]"
+            className="w-full md:w-[600px] border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]"
             style={finalizeHeight != null ? { minHeight: finalizeHeight } : undefined}
             stagedIn={stagedIn}
             stagedOut={stagedOut}
@@ -586,8 +691,21 @@ export default function CheckInOutPage() {
             onSubmit={handleSubmitFinalize}
             submitting={submitting}
             submitError={submitError ?? undefined}
+            onGenerateDocument={handleGenerateDocument}
           />
         </div>
+        <PdfPreviewDialog
+          open={previewOpen}
+          onOpenChange={handlePreviewOpenChange}
+          bytes={previewBytes}
+          title="Hand Receipt Preview"
+          filename="hand-receipt.pdf"
+          loading={previewLoading}
+          total={previewQueue.length}
+          index={queueIndex}
+          onPrev={handlePrev}
+          onNext={handleNext}
+        />
       </div>
     </div>
   );

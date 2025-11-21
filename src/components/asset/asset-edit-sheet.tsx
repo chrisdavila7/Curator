@@ -188,7 +188,7 @@ export default function AssetEditSheet({ open, onOpenChange, item, onUpdate }: P
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-[520px] max-w-[95vw]">
+      <SheetContent side="right" className="w-[520px] max-w-[95vw] rounded-l-lg border-l-8 border-t-8 border-b-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <SheetHeader>
           <SheetTitle className="text-base">Edit Menu</SheetTitle>
         </SheetHeader>

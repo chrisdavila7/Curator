@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { motion } from "framer-motion";
 import type { InventoryItem } from "@/types/inventory";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,10 @@ import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { STATUS_COLORS } from "@/lib/status-colors";
+import FinalizeStatusIcon, {
+  FINALIZE_STATUS_ICON_DURATION,
+} from "@/components/checkinout/finalize-status-icon";
 
 type InRow = Pick<InventoryItem, "asset" | "serial" | "model">;
 type OutRow = Pick<InventoryItem, "asset" | "serial" | "model"> & { from: string; to: string };
@@ -23,6 +28,7 @@ type Props = {
   onCancel?: () => void;
   className?: string;
   style?: React.CSSProperties;
+  onGenerateDocument?: () => void;
 };
 
 /**
@@ -39,6 +45,7 @@ export default function FinalizePanelCard({
   onCancel,
   className,
   style,
+  onGenerateDocument,
 }: Props) {
   type RowEntry = { kind: "in"; row: InRow } | { kind: "out"; row: OutRow };
 
@@ -70,29 +77,48 @@ export default function FinalizePanelCard({
                   ) : (
                     rows.map((entry) => {
                       const isIn = entry.kind === "in";
-                      const bandBg = isIn ? "bg-sky-500" : "bg-emerald-600";
+                      const fallbackColor = isIn ? STATUS_COLORS.ready.bg : STATUS_COLORS.deployed.bg;
 
                       return (
-                        <TableRow key={`${entry.kind}-${entry.row.asset}`} className="hover:bg-transparent font-semibold">
-                          <TableCell className="w-1/2 pl-3">
-                            <div className="relative">
-                              <span
-                                aria-hidden="true"
-                                className={cn("absolute left-0 top-0 bottom-0 w-[0.29rem]", bandBg)}
+                        <TableRow
+                          key={`${entry.kind}-${entry.row.asset}`}
+                          className="hover:bg-transparent font-semibold"
+                        >
+                          <TableCell className="pl-3">
+                            <div className="relative flex items-center gap-2">
+                              <FinalizeStatusIcon
+                                kind={isIn ? "in" : "out"}
+                                fallbackColor={fallbackColor}
                               />
-                              <span aria-hidden="true" className="inline-block w-10" />
-                              {isIn ? (
-                                <span className="tabular-nums">{entry.row.asset}</span>
-                              ) : (
-                                <span title={entry.row.from}>
+                              </div>
+                          </TableCell>
+                          
+                      <div className="overflow-hidden">
+                        <motion.div
+                              data-motion-key="finalize-row-content"
+                              initial={{ x: "-100%", filter: "blur(2px)" }}
+                              animate={{ x: "0%", filter: "blur(0px)" }}
+                              transition={{
+                                delay: FINALIZE_STATUS_ICON_DURATION + 0.3,
+                                duration: 0.3,
+                                ease: "easeInOut",
+                              }}
+                              className="flex items-center gap-2"
+                            >
+                          <TableCell className="w-1/2 pl-3">
+                          <div className="relative flex items-center gap-2">
+                                {isIn ? (
                                   <span className="tabular-nums">{entry.row.asset}</span>
-                                  <span className="text-muted-foreground"> — {entry.row.from}</span>
-                                </span>
-                              )}
+                                ) : (
+                                  <span title={entry.row.from}>
+                                    <span className="tabular-nums">{entry.row.asset}</span>
+                                    <span className="text-muted-foreground"> — {entry.row.from}</span>
+                                  </span>
+                                )}
                             </div>
                           </TableCell>
-
-                          <TableCell className="w-20 text-center">
+                          
+                          <TableCell className="w-20 text-left">
                             <span className="text-foreground/90 text-sm">
                               {isIn ? "Check In" : "Check Out"}
                             </span>
@@ -105,6 +131,7 @@ export default function FinalizePanelCard({
                               <span title={entry.row.to}>{entry.row.to}</span>
                             )}
                           </TableCell>
+
                           <TableCell className="w-10 pr-3 text-right">
                             <button
                               type="button"
@@ -116,6 +143,8 @@ export default function FinalizePanelCard({
                               <span className="sr-only">Remove</span>
                             </button>
                           </TableCell>
+                       </motion.div>
+                    </div>
                         </TableRow>
                       );
                     })
@@ -127,10 +156,11 @@ export default function FinalizePanelCard({
         </div>
 
         {/* Buttons */}
-        <div className="mt-auto pt-6">
+        <div className="mt-auto pt-6 flex flex-col items-center">
+        <motion.div whileHover={{ scale: 1.04}} >
           <Button
             type="button"
-            className="w-full h-9 bg-black text-white hover:bg-black/90 gap-2"
+            className="w-40 mx-auto h-9 bg-black text-white hover:bg-black gap-2 my-4"
             onClick={onSubmit}
             disabled={submitting || totalCount === 0}
             aria-busy={submitting}
@@ -144,6 +174,18 @@ export default function FinalizePanelCard({
               "Submit"
             )}
           </Button>
+        </motion.div>
+
+          {typeof onGenerateDocument === "function" && stagedOut.length > 0 && (
+            <Button
+              type="button"
+              className="w-[85%] mx-auto h-9 mt-[0.665rem] my-4"
+              onClick={() => onGenerateDocument?.()}
+            >
+              Generate Hand Receipt and Submit
+            </Button>
+          )}
+
           {submitError && (
             <div role="alert" aria-live="polite" className="mt-3 text-sm text-destructive">
               {submitError}

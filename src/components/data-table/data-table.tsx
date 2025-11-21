@@ -22,6 +22,7 @@ type DataTableProps<TData, TValue> = {
   tableClassName?: string;
   showPagination?: boolean;
   compact?: boolean;
+  fillHeight?: boolean;
 };
 
 export function DataTable<TData, TValue>({
@@ -32,6 +33,7 @@ export function DataTable<TData, TValue>({
   tableClassName,
   showPagination = true,
   compact = false,
+  fillHeight = false,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
 
@@ -49,9 +51,13 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <div className={cn("w-full", className)}>
-      <div className="rounded-md border">
-        <Table className={cn(tableClassName, compact && "text-sm [&_th]:px-3 [&_td]:px-3 [&_th]:py-2 [&_td]:py-2")}>
+    <div className={cn("w-full", fillHeight && "h-full", className)}>
+      <div className={cn("rounded-md border", fillHeight && "h-full")}>
+        <Table className={cn(
+          tableClassName,
+          compact && "text-sm [&_th]:px-3 [&_td]:px-3 [&_th]:py-2 [&_td]:py-2",
+          "[&_tbody>tr]:border-b [&_tbody>tr:last-child]:border-0"
+        )}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>

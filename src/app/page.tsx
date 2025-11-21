@@ -13,16 +13,20 @@ export default function LandingPage() {
   const { instance, accounts } = useMsal();
   const router = useRouter();
 
+  const isMock =
+    process.env.NEXT_PUBLIC_USE_MOCK_INVENTORY === "true" ||
+    process.env.USE_MOCK_INVENTORY === "true";
+
   const activeAccount = React.useMemo(
     () => instance.getActiveAccount() || accounts[0] || null,
     [instance, accounts]
   );
 
   React.useEffect(() => {
-    if (activeAccount) {
+    if (isMock || activeAccount) {
       router.replace("/dashboard");
     }
-  }, [activeAccount, router]);
+  }, [isMock, activeAccount, router]);
 
   return null;
 }

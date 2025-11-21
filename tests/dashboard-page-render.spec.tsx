@@ -40,7 +40,7 @@ function renderIntoDocument(node: React.ReactElement) {
 }
 
 describe("Dashboard page", () => {
-  it("renders CURATOR header and no header Search Bar", async () => {
+  it("renders Black Lab Solutions header and no header Search Bar", async () => {
     const { container, root } = renderIntoDocument(<DashboardPage />);
 
     await act(async () => {
@@ -50,7 +50,8 @@ describe("Dashboard page", () => {
 
     // Header present
     const text = container.textContent || "";
-    expect(text).toContain("CURATOR");
+    expect(text).toContain("Black Lab Solutions");
+    expect(text).not.toContain("CURATOR");
 
     // Header Search Bar should be removed; SearchCommand is no longer rendered on the dashboard
     const input = container.querySelector('input[placeholder="Search inventory or actions…"]');

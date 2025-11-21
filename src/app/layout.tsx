@@ -8,6 +8,7 @@ import { ToastProvider } from "@/components/ui/toast-provider";
 import { GlobalLoadingProvider } from "@/components/loading/loading-provider";
 import { LottieOverlayProvider } from "@/components/lottie/overlay-provider";
 import LottieOverlay from "@/components/lottie/lottie-overlay";
+import GlobalLoadingOverlay from "@/components/loading/global-loading-overlay";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,8 +21,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CURATOR",
-  description: "CURATOR",
+  title: "DOG HAUS",
+  description: "Inventory Manager",
 };
 
 export default function RootLayout({
@@ -39,6 +40,7 @@ export default function RootLayout({
             <ClientProviders>
               <AuthGuard>
                 <ToastProvider>
+                  <GlobalLoadingOverlay />
                   <ClientLayoutShell>{children}</ClientLayoutShell>
                   <LottieOverlay />
                 </ToastProvider>

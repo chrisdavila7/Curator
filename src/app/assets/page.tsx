@@ -6,7 +6,8 @@ import type { AuthenticationResult, AccountInfo } from "@azure/msal-browser";
 import type { InventoryItem } from "@/types/inventory";
 import { DataTable } from "@/components/data-table/data-table";
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
+import { statusLabel } from "@/lib/status-label";
 import { ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import AssetViewOverlay from "@/components/asset/asset-view-overlay";
 import PageHeader from "@/components/page-header";
+import { useGlobalLoading } from "@/components/loading/loading-provider";
 
 const isMock =
   process.env.NEXT_PUBLIC_USE_MOCK_INVENTORY === "true" ||
@@ -171,17 +173,13 @@ function buildInventoryColumnsWithHighlight(
       header: "Status",
       cell: ({ row, column }) => {
         const st = row.original.status;
-        const variant =
-          st === "deployed" ? "checkout" : st === "ready_to_deploy" ? "checkin" : "destructive";
-        const label =
-          st === "deployed" ? "Deployed" : st === "ready_to_deploy" ? "Ready to Deploy" : "Retired";
         return (
-          <Badge
+          <StatusBadge
+            status={st}
             className={column.getIsSorted() || !!selectedStatus ? "font-bold" : undefined}
-            variant={variant as "checkin" | "checkout" | "destructive"}
           >
-            <Highlight text={label} tokens={tokens} />
-          </Badge>
+            <Highlight text={statusLabel(st)} tokens={tokens} />
+          </StatusBadge>
         );
       },
     },
@@ -210,6 +208,7 @@ function buildInventoryColumnsWithHighlight(
 export default function AssetsPage() {
   const { instance, accounts } = useMsal();
   const [msalReady, setMsalReady] = React.useState(false);
+  const { withGlobalLoading } = useGlobalLoading();
 
   const activeAccount = React.useMemo<AccountInfo | null>(() => {
     return instance.getActiveAccount() || accounts[0] || null;
@@ -293,63 +292,67 @@ export default function AssetsPage() {
   }, [instance]);
 
   const loadAll = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Ensure MSAL is initialized before attempting token acquisition
-      if (!isMock && !msalReady) {
-        try {
-          await instance.initialize();
-        } catch {
-          // ignore here
-        }
-      }
-
-      let headers: HeadersInit = {};
-      if (!isMock) {
-        if (!API_SCOPE) {
-          throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
-        }
-        if (!activeAccount) {
-          void triggerLogin();
-          return;
-        }
-        const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
-          const p = instance.acquireTokenSilent({
-            scopes: [API_SCOPE],
-            account: activeAccount,
-          });
-          const timeout = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
-          );
-          return (await Promise.race([p, timeout])) as AuthenticationResult;
-        };
+    await withGlobalLoading(
+      (async () => {
+        setLoading(true);
+        setError(null);
 
         try {
-          const result = await acquireSilentWithTimeout(10000);
-          headers = { Authorization: `Bearer ${result.accessToken}` };
-        } catch {
-          void triggerLogin();
-          return;
-        }
-      }
+          // Ensure MSAL is initialized before attempting token acquisition
+          if (!isMock && !msalReady) {
+            try {
+              await instance.initialize();
+            } catch {
+              // ignore here
+            }
+          }
 
-      const res = await fetch("/api/inventory", { method: "GET", headers });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`API ${res.status}: ${text}`);
-      }
-      const data = (await res.json()) as InventoryItem[];
-      // Sort ascending by asset number
-      data.sort((a, b) => (a.asset || 0) - (b.asset || 0));
-      setItems(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, [activeAccount, instance, msalReady]);
+          let headers: HeadersInit = {};
+          if (!isMock) {
+            if (!API_SCOPE) {
+              throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
+            }
+            if (!activeAccount) {
+              void triggerLogin();
+              return;
+            }
+            const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
+              const p = instance.acquireTokenSilent({
+                scopes: [API_SCOPE],
+                account: activeAccount,
+              });
+              const timeout = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
+              );
+              return (await Promise.race([p, timeout])) as AuthenticationResult;
+            };
+
+            try {
+              const result = await acquireSilentWithTimeout(10000);
+              headers = { Authorization: `Bearer ${result.accessToken}` };
+            } catch {
+              void triggerLogin();
+              return;
+            }
+          }
+
+          const res = await fetch("/api/inventory", { method: "GET", headers });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`API ${res.status}: ${text}`);
+          }
+          const data = (await res.json()) as InventoryItem[];
+          // Sort ascending by asset number
+          data.sort((a, b) => (a.asset || 0) - (b.asset || 0));
+          setItems(data);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Unknown error");
+        } finally {
+          setLoading(false);
+        }
+      })()
+    );
+  }, [withGlobalLoading, activeAccount, instance, msalReady, triggerLogin]);
 
   React.useEffect(() => {
     void loadAll();
@@ -462,8 +465,8 @@ export default function AssetsPage() {
         </Card>
       ) : (
         <>
-          <Card className="rounded-2xl">
-            <CardContent className="pt-4">
+          <Card className="rounded-2xl border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
+            <CardContent className="rounded-2xl pt-4">
               <div className="flex items-center gap-2 pb-3">
                 <Input
                   className="w-1/4"
@@ -530,7 +533,7 @@ export default function AssetsPage() {
                 data={filteredItems}
                 pageSize={25}
                 showPagination={true}
-                tableClassName="table-fixed [&_th:first-child]:pl-3 [&_td:first-child]:pl-3 [&_th:last-child]:pr-3 [&_td:last-child]:pr-3"
+                tableClassName="table-fixed [&_th:first-child]:pl-3 [&_td:first-child]:pl-3 [&_th:last-child]:pr-3 [&_td:last-child]:pr-3 bg-neutral-50 rounded-lg"
               />
             </CardContent>
           </Card>

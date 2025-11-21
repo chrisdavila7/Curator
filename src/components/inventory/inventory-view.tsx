@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { motion } from "framer-motion";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
 import type { InventoryItem } from "@/types/inventory";
@@ -9,12 +10,13 @@ import { inventoryColumns, deployedCardColumns, deployedCardColumnsNoModified } 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { startOfUtcDay, startOfUtcIsoWeek, startOfUtcMonth } from "@/lib/date-utc";
 import AssetViewOverlay from "@/components/asset/asset-view-overlay";
+import { useGlobalLoading } from "@/components/loading/loading-provider";
 
 const isMock =
   process.env.NEXT_PUBLIC_USE_MOCK_INVENTORY === "true" ||
@@ -41,6 +43,7 @@ type ActivityItem = InventoryItem & {
 export function InventoryView() {
   const { instance, accounts } = useMsal();
   const [items, setItems] = React.useState<InventoryItem[]>([]);
+  const { withGlobalLoading } = useGlobalLoading();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = React.useState(false);
@@ -98,138 +101,142 @@ export function InventoryView() {
   }, [instance]);
 
   const loadData = React.useCallback(async () => {
-    // Debug to trace loading gate
-    console.debug("InventoryView loadData start", { isMock, msalReady, hasAccount: !!activeAccount });
-    try {
-      setLoading(true);
-      setError(null);
-      // Ensure MSAL is initialized here so we don't early-return and leave loading stuck.
-      if (!isMock && !msalReady) {
+    await withGlobalLoading(
+      (async () => {
+        // Debug to trace loading gate
+        console.debug("InventoryView loadData start", { isMock, msalReady, hasAccount: !!activeAccount });
         try {
-          await instance.initialize();
-        } catch {
-          // ignore init error here; loginRedirect will surface errors later
+          setLoading(true);
+          setError(null);
+          // Ensure MSAL is initialized here so we don't early-return and leave loading stuck.
+          if (!isMock && !msalReady) {
+            try {
+              await instance.initialize();
+            } catch {
+              // ignore init error here; loginRedirect will surface errors later
+            }
+          }
+
+          let headers: HeadersInit = {};
+
+          if (!isMock) {
+            if (!API_SCOPE) {
+              throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
+            }
+            if (!activeAccount) {
+              void triggerLogin();
+              return;
+            }
+            const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
+              const p = instance.acquireTokenSilent({
+                scopes: [API_SCOPE],
+                account: activeAccount,
+              });
+              const timeout = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
+              );
+              return (await Promise.race([p, timeout])) as AuthenticationResult;
+            };
+
+            try {
+              const result = await acquireSilentWithTimeout(10000);
+              headers = { Authorization: `Bearer ${result.accessToken}` };
+            } catch {
+              void triggerLogin();
+              return;
+            }
+          }
+
+          // Fetch core dataset first; then load secondary datasets with graceful degradation.
+          const resAll = await fetch("/api/inventory", { method: "GET", headers });
+          if (!resAll.ok) {
+            const text = await resAll.text();
+            throw new Error(`API ${resAll.status}: ${text}`);
+          }
+          const dataAll = (await resAll.json()) as InventoryItem[];
+          setItems(dataAll);
+
+
+          const toMs = (s?: string) => {
+            if (!s) return 0;
+            const t = new Date(s).getTime();
+            return Number.isNaN(t) ? 0 : t;
+          };
+
+          const [recentSettled, todaySettled, weekSettled, monthSettled] = await Promise.allSettled([
+            fetch("/api/inventory?recent=10", { method: "GET", headers }).then(async (r) => {
+              if (!r.ok) throw new Error(await r.text());
+              return (await r.json()) as ActivityItem[];
+            }),
+            fetch("/api/inventory?deployedSince=today", { method: "GET", headers }).then(async (r) => {
+              if (!r.ok) throw new Error(await r.text());
+              return (await r.json()) as InventoryItem[];
+            }),
+            fetch("/api/inventory?deployedSince=week", { method: "GET", headers }).then(async (r) => {
+              if (!r.ok) throw new Error(await r.text());
+              return (await r.json()) as InventoryItem[];
+            }),
+            fetch("/api/inventory?deployedSince=month", { method: "GET", headers }).then(async (r) => {
+              if (!r.ok) throw new Error(await r.text());
+              return (await r.json()) as InventoryItem[];
+            }),
+          ]);
+
+          if (recentSettled.status === "fulfilled") {
+            setRecentItems(recentSettled.value);
+          } else {
+            console.warn("recent activity fetch failed", recentSettled.reason);
+            setRecentItems([]);
+          }
+
+          const now = new Date();
+          const daySinceMs = startOfUtcDay(now).getTime();
+          const weekSinceMs = startOfUtcIsoWeek(now).getTime();
+          const monthSinceMs = startOfUtcMonth(now).getTime();
+
+          if (todaySettled.status === "fulfilled") {
+            setDeployedToday(todaySettled.value);
+          } else {
+            console.warn("deployedSince=today fetch failed", todaySettled.reason);
+            const approxToday = dataAll
+              .filter((i) => i.status === "deployed")
+              .filter((i) => toMs(i.modified || i.created) >= daySinceMs)
+              .sort((a, b) => toMs(b.modified || b.created) - toMs(a.modified || a.created))
+              .slice(0, 50);
+            setDeployedToday(approxToday);
+          }
+
+          if (weekSettled.status === "fulfilled") {
+            setDeployedWeek(weekSettled.value);
+          } else {
+            console.warn("deployedSince=week fetch failed", weekSettled.reason);
+            const approxWeek = dataAll
+              .filter((i) => i.status === "deployed")
+              .filter((i) => toMs(i.modified || i.created) >= weekSinceMs)
+              .sort((a, b) => toMs(b.modified || b.created) - toMs(a.modified || a.created))
+              .slice(0, 50);
+            setDeployedWeek(approxWeek);
+          }
+
+          if (monthSettled.status === "fulfilled") {
+            setDeployedMonth(monthSettled.value);
+          } else {
+            console.warn("deployedSince=month fetch failed", monthSettled.reason);
+            const approxMonth = dataAll
+              .filter((i) => i.status === "deployed")
+              .filter((i) => toMs(i.modified || i.created) >= monthSinceMs)
+              .sort((a, b) => toMs(b.modified || b.created) - toMs(a.modified || a.created))
+              .slice(0, 50);
+            setDeployedMonth(approxMonth);
+          }
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Unknown error");
+        } finally {
+          setLoading(false);
         }
-      }
-
-      let headers: HeadersInit = {};
-
-      if (!isMock) {
-        if (!API_SCOPE) {
-          throw new Error("Missing API scope. Set NEXT_PUBLIC_AZURE_API_SCOPE or AZURE_API_SCOPE.");
-        }
-        if (!activeAccount) {
-          void triggerLogin();
-          return;
-        }
-        const acquireSilentWithTimeout = async (timeoutMs = 10000): Promise<AuthenticationResult> => {
-          const p = instance.acquireTokenSilent({
-            scopes: [API_SCOPE],
-            account: activeAccount,
-          });
-          const timeout = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("acquireTokenSilent timeout")), timeoutMs)
-          );
-          return (await Promise.race([p, timeout])) as AuthenticationResult;
-        };
-
-        try {
-          const result = await acquireSilentWithTimeout(10000);
-          headers = { Authorization: `Bearer ${result.accessToken}` };
-        } catch {
-          void triggerLogin();
-          return;
-        }
-      }
-
-      // Fetch core dataset first; then load secondary datasets with graceful degradation.
-      const resAll = await fetch("/api/inventory", { method: "GET", headers });
-      if (!resAll.ok) {
-        const text = await resAll.text();
-        throw new Error(`API ${resAll.status}: ${text}`);
-      }
-      const dataAll = (await resAll.json()) as InventoryItem[];
-      setItems(dataAll);
-
-
-      const toMs = (s?: string) => {
-        if (!s) return 0;
-        const t = new Date(s).getTime();
-        return Number.isNaN(t) ? 0 : t;
-      };
-
-      const [recentSettled, todaySettled, weekSettled, monthSettled] = await Promise.allSettled([
-        fetch("/api/inventory?recent=10", { method: "GET", headers }).then(async (r) => {
-          if (!r.ok) throw new Error(await r.text());
-          return (await r.json()) as ActivityItem[];
-        }),
-        fetch("/api/inventory?deployedSince=today", { method: "GET", headers }).then(async (r) => {
-          if (!r.ok) throw new Error(await r.text());
-          return (await r.json()) as InventoryItem[];
-        }),
-        fetch("/api/inventory?deployedSince=week", { method: "GET", headers }).then(async (r) => {
-          if (!r.ok) throw new Error(await r.text());
-          return (await r.json()) as InventoryItem[];
-        }),
-        fetch("/api/inventory?deployedSince=month", { method: "GET", headers }).then(async (r) => {
-          if (!r.ok) throw new Error(await r.text());
-          return (await r.json()) as InventoryItem[];
-        }),
-      ]);
-
-      if (recentSettled.status === "fulfilled") {
-        setRecentItems(recentSettled.value);
-      } else {
-        console.warn("recent activity fetch failed", recentSettled.reason);
-        setRecentItems([]);
-      }
-
-      const now = new Date();
-      const daySinceMs = startOfUtcDay(now).getTime();
-      const weekSinceMs = startOfUtcIsoWeek(now).getTime();
-      const monthSinceMs = startOfUtcMonth(now).getTime();
-
-      if (todaySettled.status === "fulfilled") {
-        setDeployedToday(todaySettled.value);
-      } else {
-        console.warn("deployedSince=today fetch failed", todaySettled.reason);
-        const approxToday = dataAll
-          .filter((i) => i.status === "deployed")
-          .filter((i) => toMs(i.modified || i.created) >= daySinceMs)
-          .sort((a, b) => toMs(b.modified || b.created) - toMs(a.modified || a.created))
-          .slice(0, 50);
-        setDeployedToday(approxToday);
-      }
-
-      if (weekSettled.status === "fulfilled") {
-        setDeployedWeek(weekSettled.value);
-      } else {
-        console.warn("deployedSince=week fetch failed", weekSettled.reason);
-        const approxWeek = dataAll
-          .filter((i) => i.status === "deployed")
-          .filter((i) => toMs(i.modified || i.created) >= weekSinceMs)
-          .sort((a, b) => toMs(b.modified || b.created) - toMs(a.modified || a.created))
-          .slice(0, 50);
-        setDeployedWeek(approxWeek);
-      }
-
-      if (monthSettled.status === "fulfilled") {
-        setDeployedMonth(monthSettled.value);
-      } else {
-        console.warn("deployedSince=month fetch failed", monthSettled.reason);
-        const approxMonth = dataAll
-          .filter((i) => i.status === "deployed")
-          .filter((i) => toMs(i.modified || i.created) >= monthSinceMs)
-          .sort((a, b) => toMs(b.modified || b.created) - toMs(a.modified || a.created))
-          .slice(0, 50);
-        setDeployedMonth(approxMonth);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, [activeAccount, instance, msalReady]);
+      })()
+    );
+  }, [withGlobalLoading, activeAccount, instance, msalReady, isMock, triggerLogin]);
 
   React.useEffect(() => {
     void loadData();
@@ -253,9 +260,9 @@ export function InventoryView() {
 
   if (needsLogin && !isMock) {
     return (
-      <Card className="md:col-span-3">
+      <Card className="md:col-span-3 border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Authentication Required</CardTitle>
+          <CardTitle className="text-lg">Authentication Required</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
@@ -272,9 +279,9 @@ export function InventoryView() {
   if (loading) {
     return (
       <>
-        <Card>
+        <Card className="border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Checked Out Today</CardTitle>
+          <CardTitle className="text-lg">Checked Out <span className="italic text-[rgba(250,110,75,1)]">Today</span></CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -284,9 +291,9 @@ export function InventoryView() {
           </div>
         </CardContent>
         </Card>
-        <Card>
+        <Card className="border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Checked Out This Week</CardTitle>
+          <CardTitle className="text-lg">Checked Out <span className="italic text-[rgba(250,110,75,1)]">This Week</span></CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -296,9 +303,9 @@ export function InventoryView() {
           </div>
         </CardContent>
         </Card>
-        <Card>
+        <Card className="border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Checked Out This Month</CardTitle>
+          <CardTitle className="text-lg">Checked Out <span className="italic text-[rgba(250,110,75,1)]">This Month</span></CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -308,9 +315,9 @@ export function InventoryView() {
           </div>
         </CardContent>
         </Card>
-        <Card className="md:col-span-3">
+        <Card className="md:col-span-3 px-8 border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Recent Activity</CardTitle>
+          <CardTitle className="text-xl">Recent Activity</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -326,9 +333,9 @@ export function InventoryView() {
 
   if (error) {
     return (
-      <Card className="md:col-span-3">
+      <Card className="md:col-span-3 border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Failed to load inventory</CardTitle>
+          <CardTitle className="text-lg">Failed to load inventory</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">{error}</p>
@@ -355,9 +362,10 @@ export function InventoryView() {
 
   return (
     <>
-      <Card>
+      <motion.div whileHover={{ scale: 1.02}}>
+      <Card className="border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Checked Out Today</CardTitle>
+          <CardTitle className="text-lg">Checked Out  <span className="italic text-[rgba(250,110,75,1)]">Today</span></CardTitle>
         </CardHeader>
         <CardContent>
           <DataTable
@@ -367,49 +375,60 @@ export function InventoryView() {
             showPagination={false}
             compact
             tableClassName="table-fixed [&_th:first-child]:pl-3 [&_td:first-child]:pl-3 [&_th:last-child]:pr-3 [&_td:last-child]:pr-3"
+            className="bg-neutral-50 rounded-lg"
           />
-        </CardContent>
+      </CardContent>
       </Card>
+      </motion.div>
 
-      <Card>
+      <motion.div whileHover={{ scale: 1.02}}>
+      <Card data-test="week-card" className="border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Checked Out This Week</CardTitle>
+          <CardTitle className="text-lg">Checked Out  <span className="italic text-[rgba(250,110,75,1)]">This Week</span></CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent data-test="week-card-content" className="flex-1">
           <DataTable
             columns={deployedCardColumns}
             data={b}
             pageSize={5}
             showPagination={false}
             compact
+            fillHeight
             tableClassName="[&_th:first-child]:pl-3 [&_td:first-child]:pl-3 [&_th:last-child]:pr-3 [&_td:last-child]:pr-3"
+            className="bg-neutral-50 rounded-lg"
           />
         </CardContent>
       </Card>
+      </motion.div>
 
-      <Card>
+      <motion.div whileHover={{ scale: 1.02}}>
+      <Card data-test="month-card" className="border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
         <CardHeader>
-          <CardTitle className="text-base">Checked Out This Month</CardTitle>
+          <CardTitle className="text-lg">Checked Out  <span className="italic text-[rgba(250,110,75,1)]">This Month</span></CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent data-test="month-card-content" className="flex-1">
           <DataTable
             columns={deployedCardColumns}
             data={c}
             pageSize={5}
             showPagination={false}
             compact
+            fillHeight
             tableClassName="[&_th:first-child]:pl-3 [&_td:first-child]:pl-3 [&_th:last-child]:pr-3 [&_td:last-child]:pr-3"
+            className="bg-neutral-50 rounded-lg"
           />
         </CardContent>
       </Card>
+      </motion.div>
 
-      <Card className="md:col-span-3">
-        <CardHeader>
-          <CardTitle className="text-base">Recent Activity</CardTitle>
+    <motion.div whileHover={{ scale: 1.01}} className="w-full md:col-span-3">
+      <Card data-test="recent-activity-card" className="px-8 border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
+        <CardHeader className="px-1">
+          <CardTitle className="text-xl">Recent Activity</CardTitle>
         </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[420px] w-full">
-            <Table className="text-sm [&_th]:px-1 [&_td]:px-1 [&_th]:py-1 [&_td]:py-1 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_th:first-child]:pl-3 [&_td:first-child]:pl-3 [&_th:last-child]:pr-3 [&_td:last-child]:pr-3">
+        <CardContent data-test="recent-activity-content" className="w-full py-4 bg-neutral-50 rounded-lg border-1 overflow-x-hidden">
+          <ScrollArea className="h-full w-full">
+            <Table className="w-full text-sm [&_th]:px-1 [&_td]:px-1 [&_th]:py-1 [&_td]:py-1 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_th:first-child]:pl-3 [&_td:first-child]:pl-3 [&_th:last-child]:pr-3 [&_td:last-child]:pr-3 h-full">
               <TableHeader>
                 <TableRow>
                   <TableHead>Asset</TableHead>
@@ -471,21 +490,7 @@ export function InventoryView() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          item.status === "deployed"
-                            ? "checkout"
-                            : item.status === "ready_to_deploy"
-                            ? "checkin"
-                            : "destructive"
-                        }
-                      >
-                        {item.status === "deployed"
-                          ? "Deployed"
-                          : item.status === "ready_to_deploy"
-                          ? "Ready to Deploy"
-                          : "Retired"}
-                      </Badge>
+                      <StatusBadge status={item.status} />
                       {item._latestChangedField === "status" && (
                         <span className="ml-0.5 inline-block size-2 rounded-full bg-emerald-500 dark:bg-emerald-400 align-middle" />
                       )}
@@ -499,6 +504,8 @@ export function InventoryView() {
           </ScrollArea>
         </CardContent>
       </Card>
+    </motion.div>
+      
       {/* Overlay for viewing an asset without leaving the current page */}
       <AssetViewOverlay
         open={assetOverlayOpen}

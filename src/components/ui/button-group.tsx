@@ -3,8 +3,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-type ColorKey = "ready" | "deployed" | "retired";
+import { STATUS_COLORS, type ColorKey } from "@/lib/status-colors";
 
 type ButtonGroupOption = {
   label: string;
@@ -27,16 +26,12 @@ type ButtonGroupProps = {
  * - ArrowLeft/ArrowRight switch the selected option.
  * - Hover styles rely on default Button variant. Selected style is applied inline so it remains stable on hover.
  */
-const COLOR_STYLES: Record<ColorKey, { bg: string; text: string }> = {
-  ready: { bg: "rgba(0,166,244,0.3)", text: "#00A6F4" },     // Ready to Deploy
-  deployed: { bg: "rgba(0,188,125,0.3)", text: "#00BC7D" },  // Deployed
-  retired: { bg: "rgba(239,68,68,0.3)", text: "#EF4444" },   // Retired
-};
+const COLOR_STYLES = STATUS_COLORS;
 
 const COLOR_INTERACTIONS: Record<ColorKey, { hoverRing: string; focusRing: string }> = {
-  ready: { hoverRing: "hover:ring-sky-300/40", focusRing: "focus-visible:ring-sky-400" },
-  deployed: { hoverRing: "hover:ring-emerald-300/40", focusRing: "focus-visible:ring-emerald-400" },
-  retired: { hoverRing: "hover:ring-red-300/40", focusRing: "focus-visible:ring-red-400" },
+  ready: { hoverRing: "hover:ring-indigo-950/60", focusRing: "focus-visible:ring-indigo-100" },
+  deployed: { hoverRing: "hover:ring-orange-500/60", focusRing: "focus-visible:ring-orange-600" },
+  retired: { hoverRing: "hover:ring-red-500/60", focusRing: "focus-visible:ring-red-600" },
 };
 
 export function ButtonGroup({

@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeftFromLine, ArrowRightFromLine, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { STATUS_COLORS } from "@/lib/status-colors";
 
 type InRow = Pick<InventoryItem, "asset" | "serial" | "model">;
 type OutRow = Pick<InventoryItem, "asset" | "serial" | "model"> & { from: string; to: string };
@@ -64,7 +65,9 @@ export default function FinalizeDrawer({ open, onOpenChange, stagedIn, stagedOut
                     rows.map((entry) => {
                       const { kind } = entry;
                       const isIn = kind === "in";
-                      const AccentColor = isIn ? "bg-sky-500" : "bg-emerald-600";
+                      const bandStyle = isIn
+                        ? { backgroundColor: STATUS_COLORS.ready.bg }
+                        : { backgroundColor: STATUS_COLORS.deployed.bg };
 
                       // Content replacements with real staged data:
                       // - In: left shows asset number, right shows "Inventory"
@@ -75,7 +78,8 @@ export default function FinalizeDrawer({ open, onOpenChange, stagedIn, stagedOut
                             <div className="relative">
                               <span
                                 aria-hidden="true"
-                                className={cn("absolute left-0 top-0 bottom-0 w-[0.29rem]", AccentColor)}
+                                className={cn("absolute left-0 top-0 bottom-0 w-[0.29rem]")}
+                                style={bandStyle}
                               />
                               <span aria-hidden="true" className="inline-block w-10" />
                               {entry.kind === "in" ? (

@@ -33,7 +33,7 @@ export function AssetDetailsTable({ item, className }: Props) {
   const dash = <span className="text-muted-foreground">—</span>;
 
   return (
-    <div className={cn("rounded-md border w-full overflow-hidden", className)}>
+    <div className={cn("p-4 rounded-md border w-full bg-slate-50", className)}>
       <Table className="w-full text-sm [&_td]:py-2 [&_td]:px-3 [&_td]:align-middle">
         <TableBody>
           <TableRow data-serial-anchor>

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { motion } from "framer-motion";
 import {
   Sidebar,
   SidebarContent,
@@ -22,7 +23,8 @@ import {
   Boxes,
   ArrowRightLeft,
   Settings,
-  Moon
+  Moon,
+  CircleUserRound
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -107,11 +109,12 @@ export default function AppSidebar({ onCreate, creating }: { onCreate?: () => vo
 
   return (
     <TooltipProvider delayDuration={0}>
-      <Sidebar variant="floating" collapsible="icon">
-        <SidebarContent>
+      <Sidebar variant="floating" collapsible="icon" className="h-full rounded-2xl py-10 mx-2">
+        <SidebarContent className="h-full w-full rounded-lg border-6 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]">
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="backdrop-blur-sm bg- rounded-lg drop-shadow-sm">
+                <motion.div whileHover={{ scale: 1.04}}>
                 <SidebarMenuItem>
                   <SidebarMenuButton tooltip="Home" asChild>
                     <Link href="/">
@@ -120,12 +123,16 @@ export default function AppSidebar({ onCreate, creating }: { onCreate?: () => vo
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                </motion.div>
+                <motion.div whileHover={{ scale: 1.04}}>
                 <SidebarMenuItem>
-                  <SidebarMenuButton tooltip="Create" onClick={onCreate} disabled={!!creating} className="gap-2">
+                  <SidebarMenuButton tooltip="Create" onClick={onCreate} disabled={!!creating}>
                     <CirclePlus />
                     <span>Create</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                </motion.div>
+                <motion.div whileHover={{ scale: 1.04}}>
                 <SidebarMenuItem>
                   <SidebarMenuButton tooltip="Assets" asChild>
                     <Link href="/assets">
@@ -134,35 +141,37 @@ export default function AppSidebar({ onCreate, creating }: { onCreate?: () => vo
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                <SidebarMenuItem>
+                </motion.div>
+                <SidebarMenuItem className="pb-50">
+                  <motion.div whileHover={{ scale: 1.04 }}>
                   <SidebarMenuButton tooltip="Check In/Out" asChild>
                     <Link href="/check-in-out">
                       <ArrowRightLeft />
                       <span>Check In/Out</span>
                     </Link>
                   </SidebarMenuButton>
+                  </motion.div>
                 </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter className="items-center justify-center">
-          <Separator className="w-8" />
-          <SidebarMenu>
+                <motion.div whileHover={{ scale: 1.04}}>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Settings">
-                <Settings />
-                <span>Settings</span>
+              <SidebarMenuButton tooltip="In Development">
+                <CircleUserRound />
+                <span>Account</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.04}}>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Dark Mode">
+              <SidebarMenuButton tooltip="In Development">
                 <Moon />
                 <span>Dark Mode</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
+            </motion.div>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
       </Sidebar>
     </TooltipProvider>
   );

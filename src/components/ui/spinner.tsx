@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import LottiePlayer from "@/components/lottie/lottie-player";
+import { LOADING_ANIMATION_PATH } from "@/components/loading/loading-constants";
 import { cn } from "@/lib/utils";
 
 type SpinnerSize = "sm" | "md" | "lg";
@@ -18,16 +20,55 @@ const sizeClasses: Record<SpinnerSize, string> = {
 };
 
 export function Spinner({ size = "md", className, "aria-label": ariaLabel }: SpinnerProps) {
+  const [animationData, setAnimationData] = React.useState<object | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch(LOADING_ANIMATION_PATH, { cache: "force-cache" });
+        if (!res.ok) return;
+        const json = (await res.json()) as object;
+        if (!cancelled) {
+          setAnimationData(json);
+        }
+      } catch {
+        if (!cancelled) {
+          setAnimationData(null);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const label = ariaLabel ?? "Loading…";
+
   return (
     <span role="status" aria-live="polite" className={cn("inline-flex items-center justify-center", className)}>
-      <span
-        className={cn(
-          "inline-block animate-spin rounded-full border-2 border-muted-foreground/20 border-t-muted-foreground",
-          sizeClasses[size]
-        )}
-        aria-hidden="true"
-      />
-      <span className="sr-only">{ariaLabel ?? "Loading…"}</span>
+      {animationData ? (
+        <LottiePlayer
+          animationData={animationData}
+          loop
+          autoplay
+          className={sizeClasses[size]}
+          ariaLabel={label}
+        />
+      ) : (
+        <span
+          className={cn(
+            "inline-block animate-spin rounded-full border-2 border-muted-foreground/20 border-t-muted-foreground",
+            sizeClasses[size]
+          )}
+          aria-hidden="true"
+        />
+      )}
+      <span className="sr-only">{label}</span>
     </span>
   );
 }

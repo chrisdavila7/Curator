@@ -30,7 +30,8 @@ export default function AssetViewOverlay({
         // Mirror Create overlay container styles for consistency
         // Add outer gutters to match page paddings: 24px (p-6) on mobile, 32px (p-8) on md+
         className={cn(
-          "w-full px-9 pt-[5.2rem] pb-[5.2rem] rounded-2xl shadow-lg",
+          "w-full px-9 pt-[5.2rem] pb-[5.2rem]",
+          "rounded-2xl border-8 border-white bg-white shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),0_10px_15px_-3px_rgb(0,0,0,0.15),_0_4px_6px_-4px_rgb(0,0,0,0.15)]",
           "max-w-[75vw] md:max-w-[75vw]",
           "max-h-[calc(100%-11.71875rem)] md:max-h-[calc(100%-15.625rem)] overflow-hidden",
           className

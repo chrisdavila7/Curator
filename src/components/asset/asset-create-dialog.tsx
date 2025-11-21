@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import motion from "framer-motion";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -207,11 +208,11 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
       <DialogContent
         // Larger centered card, close button already provided by DialogContent
         className={cn(
-          "w-full pt-8 pb-8 px-[2.4rem] rounded-2xl max-w-[75vw] md:max-w-[75vw]",
-          "shadow-lg"
+          "w-full pt-8 pb-8 px-[2.4rem] rounded-2xl max-w-[63.75vw] md:max-w-[63.75vw]",
+          "bg-stone-950/50 backdrop-blur border-[1px] border-neutral-400 shadow-[inset_2px_2px_8px_rgba(0,0,0,0.1),inset_-2px_-2px_8px_rgba(0,0,0,0.02),0_4px_4px_8px_rgba(0,0,0,0.1)]"
         )}
       >
-        <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-6">
+        <h2 className="text-white text-3xl sm:text-4xl font-semibold tracking-tight mb-6">
           New Asset
         </h2>
 
@@ -219,10 +220,14 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
           {/* Left column */}
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="asset">Asset</Label>
-              <div className="w-full md:w-1/4">
+              <Label className="text-white" htmlFor="asset">Asset</Label>
+              <div className={cn("w-full md:w-1/4 rounded-xl", asset ? "bg-zinc-500" : "bg-zinc-700")}>
                 <Input
                   id="asset"
+                  className={cn(
+                    "text-white placeholder:text-white/65 rounded-xl",
+                    asset ? "border-zinc-500" : "border-zinc-700"
+                  )}
                   inputMode="numeric"
                   placeholder="Asset Number"
                   value={asset}
@@ -230,15 +235,12 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                   required
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="model">Model</Label>
-              <div className="flex gap-2">
-                <div className="relative grow md:grow-0 md:w-3/4">
+              <Label className="text-white" htmlFor="model">Model</Label>
+              <div className="flex gap-2 ">
+                <div className="relative grow md:grow-0 md:w-3/4 bg-zinc-700 rounded-xl">
                   <Input
                     id="model"
-                    className="md:px-2.5"
+                    className="md:px-2.5 text-white placeholder:text-white/65 rounded-xl border-zinc-700"
                     role="combobox"
                     aria-expanded={modelOpen && !modelManual}
                     aria-controls="model-options"
@@ -312,6 +314,7 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                 </div>
                 <Button
                   type="button"
+                  className="text-white bg-zinc-700 rounded-xl border-zinc-700"
                   size="icon"
                   variant="outline"
                   aria-label="Toggle model list"
@@ -330,10 +333,11 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                     setModelOpen((o) => !o);
                   }}
                 >
-                  <ChevronDown className="size-4" />
+                  <ChevronDown className="size-4 text-white" />
                 </Button>
                 <Button
                   type="button"
+                  className="text-white bg-zinc-700 rounded-xl border-zinc-700"
                   size="icon"
                   variant={modelManual ? "default" : "outline"}
                   aria-pressed={modelManual}
@@ -357,17 +361,17 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                     });
                   }}
                 >
-                  <Plus className="size-4" />
+                  <Plus className="size-4 text-white" />
                 </Button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="serial">Serial</Label>
-              <div className="w-full md:w-3/4">
+              <Label className="text-white" htmlFor="serial">Serial</Label>
+              <div className="w-full md:w-3/4 bg-zinc-700 rounded-xl">
                 <Input
                   id="serial"
-                  className="md:px-2.5"
+                  className="md:px-2.5 text-white placeholder:text-white/65 rounded-xl border-zinc-700"
                   placeholder="Serial Number"
                   value={serial}
                   onChange={(e) => setSerial(e.target.value)}
@@ -380,12 +384,12 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
           {/* Right column */}
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="image">Image</Label>
-              <div className="w-full md:w-3/4">
+              <Label className="text-white" htmlFor="image">Image</Label>
+              <div className="w-full md:w-3/4 bg-zinc-700 rounded-xl">
                 <Input
                   id="image"
                   type="file"
-                  className="md:px-2.5"
+                  className="md:px-2.5 text-transparent file:text-white/85 file:cursor-pointer file:bg-transparent file:border-0 file:px-0 file:mr-0 rounded-xl border-zinc-700"
                   accept="image/*"
                   onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
                 />
@@ -393,12 +397,12 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="userloc">User/Location</Label>
+              <Label className="text-white" htmlFor="userloc">User/Location</Label>
               <div className="flex gap-2">
-                <div className="relative grow md:grow-0 md:w-3/4">
+                <div className="relative grow md:grow-0 md:w-3/4 bg-zinc-700 rounded-xl">
                   <Input
                     id="userloc"
-                    className="md:px-2.5"
+                    className="md:px-2.5 text-white placeholder:text-white/65 rounded-xl border-zinc-700"
                     role="combobox"
                     aria-expanded={userLocOpen && !userManual}
                     aria-controls="userloc-options"
@@ -509,6 +513,7 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
 
                 <Button
                   type="button"
+                  className="text-white bg-zinc-700 rounded-xl border-zinc-700"
                   size="icon"
                   variant="outline"
                   aria-label="Toggle user/location list"
@@ -527,11 +532,12 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                     setUserLocOpen((o) => !o);
                   }}
                 >
-                  <ChevronDown className="size-4" />
+                  <ChevronDown className="size-4 text-white" />
                 </Button>
 
                 <Button
                   type="button"
+                  className="text-white bg-zinc-700 rounded-xl border-zinc-700"
                   size="icon"
                   variant={userManual ? "default" : "outline"}
                   aria-pressed={userManual}
@@ -555,13 +561,13 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                     });
                   }}
                 >
-                  <Plus className="size-4" />
+                  <Plus className="size-4 text-white" />
                 </Button>
               </div>
             </div>
 
             <fieldset className="space-y-3">
-              <legend className="text-sm font-medium text-foreground">Asset Status</legend>
+              <legend className="text-sm text-white font-medium text-foreground">Asset Status</legend>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <ButtonGroup
                   ariaLabel="Asset Status"
@@ -573,9 +579,10 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                     { label: "Retired", value: "retired", color: "retired", testId: "status-retired" },
                   ]}
                 />
+
                 <Button
                   type="submit"
-                  className="px-6 gap-2"
+                  className="rounded-xl bg-white text-black px-6 gap-2"
                   disabled={saving}
                   aria-busy={saving}
                 >
@@ -588,7 +595,7 @@ export default function AssetCreateDialog({ open, onOpenChange, defaultAsset }: 
                     "Save"
                   )}
                 </Button>
-              </div>
+             </div>
               {saveError && (
                 <span className="text-sm text-destructive">{saveError}</span>
               )}

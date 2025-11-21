@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Boxes } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { STATUS_COLORS } from "@/lib/status-colors";
 
 type Props = {
   inCount?: number;
@@ -24,9 +25,19 @@ export default function FinalizeCard({ inCount = 0, outCount = 0, className, onF
     return (
       <div className={cn("w-full", className)}>
         <div className="flex items-center justify-center gap-6">
-          <span className={cn("text-4xl font-semibold tabular-nums", inCount > 0 ? "text-sky-500" : "text-black")}>{inCount}</span>
+          <span
+            className={cn("text-4xl font-semibold tabular-nums", inCount > 0 ? "" : "text-black")}
+            style={inCount > 0 ? { color: STATUS_COLORS.ready.text } : undefined}
+          >
+            {inCount}
+          </span>
           <Boxes className="size-14" aria-hidden="true" />
-          <span className={cn("text-4xl font-semibold tabular-nums", outCount > 0 ? "text-emerald-600" : "text-black")}>{outCount}</span>
+          <span
+            className={cn("text-4xl font-semibold tabular-nums", outCount > 0 ? "" : "text-black")}
+            style={outCount > 0 ? { color: STATUS_COLORS.deployed.text } : undefined}
+          >
+            {outCount}
+          </span>
         </div>
 
         <div className="h-[1.5625rem]" />
@@ -40,9 +51,19 @@ export default function FinalizeCard({ inCount = 0, outCount = 0, className, onF
     <Card className={cn("rounded-2xl shadow-md", className)}>
       <CardContent className="p-6">
         <div className="flex items-center justify-center gap-6">
-          <span className={cn("text-4xl font-semibold tabular-nums", inCount > 0 ? "text-sky-500" : "text-black")}>{inCount}</span>
+          <span
+            className={cn("text-4xl font-semibold tabular-nums", inCount > 0 ? "" : "text-black")}
+            style={inCount > 0 ? { color: STATUS_COLORS.ready.text } : undefined}
+          >
+            {inCount}
+          </span>
           <Boxes className="size-14" aria-hidden="true" />
-          <span className={cn("text-4xl font-semibold tabular-nums", outCount > 0 ? "text-emerald-600" : "text-black")}>{outCount}</span>
+          <span
+            className={cn("text-4xl font-semibold tabular-nums", outCount > 0 ? "" : "text-black")}
+            style={outCount > 0 ? { color: STATUS_COLORS.deployed.text } : undefined}
+          >
+            {outCount}
+          </span>
         </div>
 
         <div className="h-[1.5625rem]" />

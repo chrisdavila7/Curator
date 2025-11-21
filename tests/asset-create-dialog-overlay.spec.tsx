@@ -189,4 +189,84 @@ describe("AssetCreateDialog Lottie overlay on Create", () => {
     expect(arg.loop).toBe(false);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("uses dark, blurred field styling for labels and inputs", async () => {
+    const onOpenChange = vi.fn();
+    const { container } = await renderIntoDocument(
+      <AssetCreateDialog open={true} onOpenChange={onOpenChange} />
+    );
+
+    const expectLabelAndInputStyles = (htmlFor: string, options?: { hasWrapper?: boolean }) => {
+      const label = container.querySelector(`label[for="${htmlFor}"]`) as HTMLLabelElement | null;
+      expect(label).toBeTruthy();
+      expect(label?.className || "").toContain("text-white");
+
+      const input = container.querySelector(`#${htmlFor}`) as HTMLInputElement | null;
+      expect(input).toBeTruthy();
+      const inputClass = input?.className || "";
+      expect(inputClass).toContain("text-white");
+      expect(inputClass).toContain("rounded-xl");
+      expect(inputClass).toContain("border-zinc-700");
+      expect(inputClass).toContain("placeholder:text-white/65");
+
+      if (options?.hasWrapper ?? true) {
+        const wrapper = input?.parentElement as HTMLDivElement | null;
+        expect(wrapper).toBeTruthy();
+        const wrapperClass = wrapper?.className || "";
+        expect(wrapperClass).toContain("bg-zinc-700");
+        expect(wrapperClass).toContain("rounded-xl");
+      }
+    };
+
+    // Asset, Model, Serial, and User/Location should all use the dark field styling
+    expectLabelAndInputStyles("asset");
+    expectLabelAndInputStyles("model");
+    expectLabelAndInputStyles("serial");
+    expectLabelAndInputStyles("userloc");
+  });
+
+  it("uses dark styling for inline control buttons and icons", async () => {
+    const onOpenChange = vi.fn();
+    const { container } = await renderIntoDocument(
+      <AssetCreateDialog open={true} onOpenChange={onOpenChange} />
+    );
+
+    const expectButtonStyles = (button: HTMLButtonElement | null) => {
+      expect(button).toBeTruthy();
+      const className = button?.className || "";
+      expect(className).toContain("text-white");
+      expect(className).toContain("bg-zinc-700");
+      expect(className).toContain("rounded-xl");
+      expect(className).toContain("border-zinc-700");
+
+      const icon = button?.querySelector("svg") as SVGElement | null;
+      expect(icon).toBeTruthy();
+      const iconClass = icon?.className.baseVal ?? icon?.className?.toString() ?? "";
+      expect(iconClass).toContain("text-white");
+    };
+
+    // Model combobox toggle button
+    const modelToggle = container.querySelector(
+      'button[aria-label="Toggle model list"]'
+    ) as HTMLButtonElement | null;
+    expectButtonStyles(modelToggle);
+
+    // Model manual-entry button (first "Manual entry" button)
+    const manualEntryButtons = container.querySelectorAll(
+      'button[title="Manual entry"]'
+    ) as NodeListOf<HTMLButtonElement>;
+    expect(manualEntryButtons.length).toBeGreaterThanOrEqual(1);
+    expectButtonStyles(manualEntryButtons[0] ?? null);
+
+    // User/Location combobox toggle button
+    const userToggle = container.querySelector(
+      'button[aria-label="Toggle user/location list"]'
+    ) as HTMLButtonElement | null;
+    expectButtonStyles(userToggle);
+
+    // User/Location manual-entry button (second "Manual entry" button, if present)
+    if (manualEntryButtons.length > 1) {
+      expectButtonStyles(manualEntryButtons[1] ?? null);
+    }
+  });
 });

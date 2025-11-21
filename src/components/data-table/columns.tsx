@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ColumnDef, Column } from "@tanstack/react-table";
 import { InventoryItem } from "@/types/inventory";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
 
@@ -85,11 +85,7 @@ export const inventoryColumns: ColumnDef<InventoryItem>[] = [
     header: "Status",
     cell: ({ row }) => {
       const st = row.original.status;
-      const variant =
-        st === "deployed" ? "checkout" : st === "ready_to_deploy" ? "checkin" : "destructive";
-      const label =
-        st === "deployed" ? "Deployed" : st === "ready_to_deploy" ? "Ready to Deploy" : "Retired";
-      return <Badge variant={variant as "checkin" | "checkout" | "destructive"}>{label}</Badge>;
+      return <StatusBadge status={st} />;
     },
   },
   {
